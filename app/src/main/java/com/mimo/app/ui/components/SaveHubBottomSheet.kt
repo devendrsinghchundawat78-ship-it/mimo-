@@ -388,7 +388,7 @@ fun SaveActionBox(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    onClick: () => Unit
+    onClick: () -> Unit
 ) {
     Column(
         modifier = Modifier

@@ -74,7 +74,7 @@ fun AppLogo(
 fun AppInputField(
     label: String,
     value: String,
-    onValueChange: (String) => Unit,
+    onValueChange: (String) -> Unit,
     placeholder: String,
     modifier: Modifier = Modifier,
     isPassword: Boolean = false,
@@ -151,7 +151,7 @@ fun AppInputField(
 @Composable
 fun PrimaryPillButton(
     text: String,
-    onClick: () => Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -175,7 +175,7 @@ fun PrimaryPillButton(
 @Composable
 fun SecondarySocialButton(
     text: String,
-    onClick: () => Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isGoogle: Boolean = true
 ) {
