@@ -35,3 +35,14 @@
 - **Strict Category Grouping**:
   - All features and options must be systematically categorized into structured groups with appropriate hierarchy.
   - Keep each screen's purpose focused, logical, and cleanly segmented.
+
+---
+
+## 4. Tech Stack & Execution Workflow (Strict Rule)
+- **Native Android with Kotlin**:
+  - The entire project must be built in **Kotlin** for Native Android.
+  - Strictly **NO Expo**, React Native, or hybrid frameworks.
+- **Step-by-Step, User-Directed Development**:
+  - Never build ahead or generate unrequested modules in advance.
+  - Only build what is explicitly instructed, step-by-step.
+  - Wait for the user's direction before starting.
