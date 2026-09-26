@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.mimo.app.ui.screens.HomeScreen
 import com.mimo.app.ui.screens.LoginScreen
 import com.mimo.app.ui.screens.OtpVerificationScreen
 import com.mimo.app.ui.screens.SignUpScreen
@@ -32,7 +33,8 @@ enum class Screen {
     WELCOME,
     LOGIN,
     SIGN_UP,
-    OTP_VERIFICATION
+    OTP_VERIFICATION,
+    HOME
 }
 
 class MainActivity : ComponentActivity() {
@@ -65,7 +67,7 @@ fun AppNavigation() {
     }
 
     // Android hardware back button handler
-    BackHandler(enabled = currentScreen != Screen.WELCOME) {
+    BackHandler(enabled = currentScreen != Screen.WELCOME && currentScreen != Screen.HOME) {
         when (currentScreen) {
             Screen.LOGIN -> navigateTo(Screen.WELCOME, forward = false)
             Screen.SIGN_UP -> navigateTo(Screen.LOGIN, forward = false)
@@ -146,10 +148,18 @@ fun AppNavigation() {
                         navigateTo(Screen.LOGIN, forward = false)
                     },
                     onContinueClick = { otpCode ->
-                        // Proceed after verification
+                        navigateTo(Screen.HOME, forward = true)
                     },
                     onResendOtpClick = {
                         // Resend logic
+                    }
+                )
+            }
+
+            Screen.HOME -> {
+                HomeScreen(
+                    onProfileClick = {
+                        // Profile destination
                     }
                 )
             }
