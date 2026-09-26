@@ -117,13 +117,20 @@ fun AppNavigation() {
             Screen.LOGIN -> {
                 LoginScreen(
                     onSignInClick = { _, _ ->
-                        navigateTo(Screen.OTP_VERIFICATION, forward = true)
+                        // Direct seamless login without blocking
+                        navigateTo(Screen.HOME, forward = true)
                     },
                     onSignUpClick = {
                         navigateTo(Screen.SIGN_UP, forward = true)
                     },
                     onForgotPasswordClick = {
                         navigateTo(Screen.OTP_VERIFICATION, forward = true)
+                    },
+                    onGoogleSignInClick = {
+                        navigateTo(Screen.HOME, forward = true)
+                    },
+                    onAppleSignInClick = {
+                        navigateTo(Screen.HOME, forward = true)
                     }
                 )
             }
@@ -131,13 +138,20 @@ fun AppNavigation() {
             Screen.SIGN_UP -> {
                 SignUpScreen(
                     onSignUpClick = { _, _, _ ->
-                        navigateTo(Screen.OTP_VERIFICATION, forward = true)
+                        // Direct seamless sign up without blocking
+                        navigateTo(Screen.HOME, forward = true)
                     },
                     onSignInClick = {
                         navigateTo(Screen.LOGIN, forward = false)
                     },
                     onForgotPasswordClick = {
                         navigateTo(Screen.OTP_VERIFICATION, forward = true)
+                    },
+                    onGoogleSignUpClick = {
+                        navigateTo(Screen.HOME, forward = true)
+                    },
+                    onAppleSignUpClick = {
+                        navigateTo(Screen.HOME, forward = true)
                     }
                 )
             }
