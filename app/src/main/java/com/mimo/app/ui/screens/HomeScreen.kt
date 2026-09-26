@@ -120,269 +120,262 @@ fun HomeScreen(
             .fillMaxSize()
             .background(AppWhite)
     ) {
-        // Main Screen Content (blurs smoothly when hold preview is active)
-        Column(
+        // Tab Content Switcher with Crossfade
+        Crossfade(
+            targetState = activeTab,
+            animationSpec = tween(durationMillis = 300),
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp)
                 .then(
                     if (previewItem != null) Modifier.blur(20.dp) else Modifier
-                )
-        ) {
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 1. Top Bar: Left Logo + Stylized "Mimo" font, Right '+' Icon
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AppLogo(size = 36)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Mimo",
-                        fontSize = 24.sp,
-                        fontFamily = FontFamily.Serif,
-                        fontWeight = FontWeight.Bold,
-                        color = AppBlack,
-                        letterSpacing = 1.2.sp
+                ),
+            label = "TabCrossfade"
+        ) { tabIndex ->
+            when (tabIndex) {
+                1 -> {
+                    // REAL ACTUAL MAP SCREEN
+                    MapScreen(
+                        savedItems = savedItems,
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
-
-                // Add button (+)
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(AppBlack)
-                        .clickable { showAddDialog = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add Save",
-                        tint = AppWhite,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // 2. Search Bar
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .background(AppInputBg, RoundedCornerShape(14.dp))
-                    .padding(horizontal = 14.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = null,
-                        tint = AppLightGrey,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (searchQuery.isEmpty()) {
-                            Text(
-                                text = "Search saves...",
-                                color = AppLightGrey,
-                                fontSize = 15.sp
-                            )
-                        }
-                        BasicTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            singleLine = true,
-                            cursorBrush = SolidColor(AppBlack),
-                            textStyle = TextStyle(
-                                color = AppBlack,
-                                fontSize = 15.sp,
-                                fontFamily = FontFamily.SansSerif
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(
-                            onClick = { searchQuery = "" },
-                            modifier = Modifier.size(20.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Clear",
-                                tint = AppLightGrey,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Scrollable Content
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 110.dp)
-            ) {
-                // 3. Recently Saved Section - Distinct Horizontal Sliding Carousel (LazyRow)
-                item {
-                    Text(
-                        text = "Recently Saved",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = AppBlack,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-
-                    if (savedItems.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(90.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(AppInputBg),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "No recent saves",
-                                fontSize = 14.sp,
-                                color = AppLightGrey
-                            )
-                        }
-                    } else {
-                        // Horizontal Slide Carousel
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(vertical = 4.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(savedItems.take(5), key = { "recent_" + it.id }) { item ->
-                                RecentSaveCarouselCard(
-                                    item = item,
-                                    onLongPress = { previewItem = item },
-                                    onClick = {
-                                        if (item.url.isNotBlank()) {
-                                            try {
-                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
-                                            } catch (_: Exception) {}
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-                }
-
-                // 4. All Saves & Collections Header with Box/List Switcher
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                else -> {
+                    // HOME SCREEN CONTENT
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 20.dp)
                     ) {
-                        Text(
-                            text = "All Saves",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = AppBlack
-                        )
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(AppInputBg)
-                                .clickable { isGridView = !isGridView }
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
-                                    contentDescription = "Toggle View",
-                                    tint = AppBlack,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (isGridView) "List" else "Grid",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = AppBlack
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-                }
-
-                // All Saves List / Grid with Smooth Crossfade Animation
-                if (filteredItems.isEmpty()) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(160.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(AppInputBg)
-                                .padding(20.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = if (searchQuery.isEmpty()) "No saves yet" else "No matching saves found",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = AppBlack
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Tap the + button to save your first link or note",
-                                    fontSize = 13.sp,
-                                    color = AppLightGrey,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-                } else if (!isGridView) {
-                    // List View with real thumbnails and descriptions
-                    items(filteredItems, key = { it.id }) { item ->
-                        ListSaveCard(
-                            item = item,
-                            onLongPress = { previewItem = item },
-                            onClick = {
-                                if (item.url.isNotBlank()) {
-                                    try {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
-                                    } catch (_: Exception) {}
-                                }
-                            }
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                    }
-                } else {
-                    // Grid View with real thumbnails and descriptions
-                    val chunks = filteredItems.chunked(2)
-                    items(chunks) { rowItems ->
+                        // 1. Top Bar: Left Logo + Stylized "Mimo" font, Right '+' Icon
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            for (item in rowItems) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                AppLogo(size = 36)
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Mimo",
+                                    fontSize = 24.sp,
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AppBlack,
+                                    letterSpacing = 1.2.sp
+                                )
+                            }
+
+                            // Add button (+)
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(AppBlack)
+                                    .clickable { showAddDialog = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Add Save",
+                                    tint = AppWhite,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        // 2. Search Bar
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .background(AppInputBg, RoundedCornerShape(14.dp))
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = AppLightGrey,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Box(modifier = Modifier.weight(1f)) {
-                                    GridSaveCard(
+                                    if (searchQuery.isEmpty()) {
+                                        Text(
+                                            text = "Search saves...",
+                                            color = AppLightGrey,
+                                            fontSize = 15.sp
+                                        )
+                                    }
+                                    BasicTextField(
+                                        value = searchQuery,
+                                        onValueChange = { searchQuery = it },
+                                        singleLine = true,
+                                        cursorBrush = SolidColor(AppBlack),
+                                        textStyle = TextStyle(
+                                            color = AppBlack,
+                                            fontSize = 15.sp,
+                                            fontFamily = FontFamily.SansSerif
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { searchQuery = "" },
+                                        modifier = Modifier.size(20.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Clear",
+                                            tint = AppLightGrey,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        // Scrollable Content
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 110.dp)
+                        ) {
+                            // 3. Recently Saved Section - Horizontal Sliding Carousel
+                            item {
+                                Text(
+                                    text = "Recently Saved",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AppBlack,
+                                    modifier = Modifier.padding(bottom = 12.dp)
+                                )
+
+                                if (savedItems.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(90.dp)
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(AppInputBg),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "No recent saves",
+                                            fontSize = 14.sp,
+                                            color = AppLightGrey
+                                        )
+                                    }
+                                } else {
+                                    LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        contentPadding = PaddingValues(vertical = 4.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        items(savedItems.take(5), key = { "recent_" + it.id }) { item ->
+                                            RecentSaveCarouselCard(
+                                                item = item,
+                                                onLongPress = { previewItem = item },
+                                                onClick = {
+                                                    if (item.url.isNotBlank()) {
+                                                        try {
+                                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
+                                                        } catch (_: Exception) {}
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(24.dp))
+                            }
+
+                            // 4. All Saves & Collections Header with Box/List Switcher
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "All Saves",
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AppBlack
+                                    )
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(AppInputBg)
+                                            .clickable { isGridView = !isGridView }
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
+                                                contentDescription = "Toggle View",
+                                                tint = AppBlack,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (isGridView) "List" else "Grid",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = AppBlack
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+                            }
+
+                            // All Saves List / Grid
+                            if (filteredItems.isEmpty()) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(160.dp)
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(AppInputBg)
+                                            .padding(20.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = if (searchQuery.isEmpty()) "No saves yet" else "No matching saves found",
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = AppBlack
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = "Tap the + button to save your first link or note",
+                                                fontSize = 13.sp,
+                                                color = AppLightGrey,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                }
+                            } else if (!isGridView) {
+                                // List View with real thumbnails and descriptions
+                                items(filteredItems, key = { it.id }) { item ->
+                                    ListSaveCard(
                                         item = item,
                                         onLongPress = { previewItem = item },
                                         onClick = {
@@ -393,19 +386,45 @@ fun HomeScreen(
                                             }
                                         }
                                     )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                }
+                            } else {
+                                // Grid View with real thumbnails and descriptions
+                                val chunks = filteredItems.chunked(2)
+                                items(chunks) { rowItems ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        for (item in rowItems) {
+                                            Box(modifier = Modifier.weight(1f)) {
+                                                GridSaveCard(
+                                                    item = item,
+                                                    onLongPress = { previewItem = item },
+                                                    onClick = {
+                                                        if (item.url.isNotBlank()) {
+                                                            try {
+                                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
+                                                            } catch (_: Exception) {}
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
+                                        if (rowItems.size == 1) {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(12.dp))
                                 }
                             }
-                            if (rowItems.size == 1) {
-                                Spacer(modifier = Modifier.weight(1f))
-                            }
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
                     }
                 }
             }
         }
 
-        // 5. iOS-Style Liquid Glass Bottom Bar
+        // 5. iOS-Style Liquid Glass Bottom Bar (anchored over Home & Map views)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -490,7 +509,6 @@ fun RecentSaveCarouselCard(
             .padding(10.dp)
             .animateContentSize()
     ) {
-        // Thumbnail Box with real AsyncImage + Platform Badge
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -515,7 +533,6 @@ fun RecentSaveCarouselCard(
                 )
             }
 
-            // Top-right corner badge icon
             CategoryBadgeIcon(
                 category = item.category,
                 size = 20,
@@ -571,7 +588,6 @@ fun ListSaveCard(
             .animateContentSize(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Real AsyncImage Thumbnail with small category badge
         Box(modifier = Modifier.size(54.dp)) {
             Box(
                 modifier = Modifier
@@ -670,7 +686,6 @@ fun GridSaveCard(
             .padding(12.dp)
             .animateContentSize()
     ) {
-        // Thumbnail with AsyncImage
         Box(
             modifier = Modifier
                 .fillMaxWidth()
