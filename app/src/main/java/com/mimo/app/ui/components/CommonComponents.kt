@@ -48,24 +48,31 @@ import com.mimo.app.ui.theme.AppBorderGrey
 import com.mimo.app.ui.theme.AppInputBg
 import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
+import com.mimo.app.ui.theme.ThemeManager
 
 @Composable
 fun AppLogo(
     modifier: Modifier = Modifier,
     size: Int = 60
 ) {
+    val isDark = ThemeManager.isDark
     Box(
         modifier = modifier
             .size(size.dp)
             .clip(CircleShape)
-            .background(AppInputBg),
+            .background(if (isDark) Color(0xFF000000) else Color(0xFFF5F5F5))
+            .border(
+                width = 1.dp,
+                color = if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA),
+                shape = CircleShape
+            ),
         contentAlignment = Alignment.Center
     ) {
         Image(
             painter = painterResource(id = R.drawable.ic_mimo),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxSize()
         )
     }
 }

@@ -27,9 +27,10 @@ object ThemeManager {
 }
 
 // Adaptive Theme Colors - Automatically update on theme toggle
+// AMOLED Dark: Pure #000000 pitch black for OLED screens
 val AppWhite: Color
     @Composable
-    get() = if (ThemeManager.isDark) Color(0xFF121212) else Color(0xFFFFFFFF)
+    get() = if (ThemeManager.isDark) Color(0xFF000000) else Color(0xFFFFFFFF)
 
 val AppBlack: Color
     @Composable
@@ -37,25 +38,25 @@ val AppBlack: Color
 
 val AppCardBg: Color
     @Composable
-    get() = if (ThemeManager.isDark) Color(0xFF1E1E1E) else Color(0xFFFFFFFF)
+    get() = if (ThemeManager.isDark) Color(0xFF121212) else Color(0xFFFFFFFF)
 
 val AppInputBg: Color
     @Composable
-    get() = if (ThemeManager.isDark) Color(0xFF222222) else Color(0xFFF5F5F5)
+    get() = if (ThemeManager.isDark) Color(0xFF1C1C1E) else Color(0xFFF5F5F5)
 
 val AppBorderGrey: Color
     @Composable
-    get() = if (ThemeManager.isDark) Color(0xFF333333) else Color(0xFFE0E0E0)
+    get() = if (ThemeManager.isDark) Color(0xFF2C2C2E) else Color(0xFFE0E0E0)
 
 val AppLightGrey: Color
     @Composable
-    get() = if (ThemeManager.isDark) Color(0xFFAAAAAA) else Color(0xFF999999)
+    get() = if (ThemeManager.isDark) Color(0xFF8E8E93) else Color(0xFF999999)
 
 val AppAccentRed = Color(0xFFFF3B30)
 
 val AppOtpBoxBg: Color
     @Composable
-    get() = if (ThemeManager.isDark) Color(0xFF222222) else Color(0xFFF5F5F5)
+    get() = if (ThemeManager.isDark) Color(0xFF1C1C1E) else Color(0xFFF5F5F5)
 
 val AppShapes = Shapes(
     small = RoundedCornerShape(8.dp),
@@ -107,7 +108,7 @@ fun getAppTypography(): Typography {
             fontFamily = FontFamily.SansSerif,
             fontWeight = FontWeight.SemiBold,
             fontSize = 15.sp,
-            color = if (ThemeManager.isDark) Color(0xFF121212) else Color(0xFFFFFFFF)
+            color = if (ThemeManager.isDark) Color(0xFF000000) else Color(0xFFFFFFFF)
         )
     )
 }
@@ -123,10 +124,10 @@ private val LightColorScheme = lightColorScheme(
 
 private val DarkColorScheme = darkColorScheme(
     primary = Color(0xFFFFFFFF),
-    onPrimary = Color(0xFF121212),
-    background = Color(0xFF121212),
+    onPrimary = Color(0xFF000000),
+    background = Color(0xFF000000),
     onBackground = Color(0xFFFFFFFF),
-    surface = Color(0xFF1E1E1E),
+    surface = Color(0xFF121212),
     onSurface = Color(0xFFFFFFFF)
 )
 
