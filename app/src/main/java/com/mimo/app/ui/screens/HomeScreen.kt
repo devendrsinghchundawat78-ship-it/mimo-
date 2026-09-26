@@ -139,6 +139,14 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
+                3 -> {
+                    // SEARCH SCREEN
+                    SearchScreen(
+                        savedItems = savedItems,
+                        onItemLongPress = { previewItem = it },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
                 else -> {
                     // HOME SCREEN CONTENT
                     Column(
