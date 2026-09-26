@@ -1,16 +1,12 @@
 package com.mimo.app.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,14 +16,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
@@ -48,16 +41,13 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,7 +56,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -74,34 +65,33 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mimo.app.data.model.ItemCategory
 import com.mimo.app.data.model.SaveItem
-import com.mimo.app.ui.components.AppInputField
 import com.mimo.app.ui.components.AppLogo
-import com.mimo.app.ui.components.PrimaryPillButton
+import com.mimo.app.ui.components.CategoryBadgeIcon
+import com.mimo.app.ui.components.ItemPreviewPopup
+import com.mimo.app.ui.components.SaveHubBottomSheet
+import com.mimo.app.ui.components.getCategoryIcon
+import com.mimo.app.ui.theme.AppAccentRed
 import com.mimo.app.ui.theme.AppBlack
 import com.mimo.app.ui.theme.AppBorderGrey
 import com.mimo.app.ui.theme.AppInputBg
 import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
-import kotlinx.coroutines.launch
-
-enum class BottomTab {
-    HOME,
-    MAP,
-    ADD,
-    SEARCH,
-    PROFILE
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onProfileClick: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
     var isGridView by remember { mutableStateOf(false) }
     var activeTab by remember { mutableIntStateOf(0) }
     var showAddDialog by remember { mutableStateOf(false) }
+
+    // State for Instagram-style hold preview
+    var previewItem by remember { mutableStateOf<SaveItem?>(null) }
 
     // Real state collection for saves (Zero mock data - genuine empty state until added)
     val savedItems = remember { mutableStateListOf<SaveItem>() }
@@ -111,7 +101,8 @@ fun HomeScreen(
     } else {
         savedItems.filter {
             it.title.contains(searchQuery, ignoreCase = true) ||
-            it.url.contains(searchQuery, ignoreCase = true)
+            it.url.contains(searchQuery, ignoreCase = true) ||
+            it.sourcePlatform.contains(searchQuery, ignoreCase = true)
         }
     }
 
@@ -120,10 +111,14 @@ fun HomeScreen(
             .fillMaxSize()
             .background(AppWhite)
     ) {
+        // Main Screen Content (blurs when hold preview is active)
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 20.dp)
+                .then(
+                    if (previewItem != null) Modifier.blur(16.dp) else Modifier
+                )
         ) {
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -133,9 +128,7 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     AppLogo(size = 36)
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
@@ -227,7 +220,7 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Scrollable Content area with padding at bottom for floating nav bar
+            // Scrollable Content
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 110.dp)
@@ -243,7 +236,6 @@ fun HomeScreen(
                     )
 
                     if (savedItems.isEmpty()) {
-                        // Genuine clean empty state
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -258,9 +250,18 @@ fun HomeScreen(
                             )
                         }
                     } else {
-                        // Display latest 3 saves vertically
                         savedItems.take(3).forEach { item ->
-                            RecentSaveRow(item = item)
+                            RecentSaveRow(
+                                item = item,
+                                onLongPress = { previewItem = item },
+                                onClick = {
+                                    if (item.url.isNotBlank()) {
+                                        try {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
@@ -268,7 +269,7 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(24.dp))
                 }
 
-                // 4. All Saves & Collections Section Header with Box/List Toggle Button
+                // 4. All Saves & Collections Header with Box/List Switcher
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -282,7 +283,6 @@ fun HomeScreen(
                             color = AppBlack
                         )
 
-                        // Toggle style button (Box/Grid vs List)
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(20.dp))
@@ -311,7 +311,7 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                // All Saves content: Empty state or Grid/List view
+                // All Saves List / Grid
                 if (filteredItems.isEmpty()) {
                     item {
                         Box(
@@ -331,7 +331,7 @@ fun HomeScreen(
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "Tap the + button to save your first link",
+                                    text = "Tap the + button to save your first link or note",
                                     fontSize = 13.sp,
                                     color = AppLightGrey,
                                     textAlign = TextAlign.Center
@@ -340,13 +340,23 @@ fun HomeScreen(
                         }
                     }
                 } else if (!isGridView) {
-                    // List View
+                    // List View with small category badge icon and long-press
                     items(filteredItems, key = { it.id }) { item ->
-                        ListSaveCard(item = item)
+                        ListSaveCard(
+                            item = item,
+                            onLongPress = { previewItem = item },
+                            onClick = {
+                                if (item.url.isNotBlank()) {
+                                    try {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        )
                         Spacer(modifier = Modifier.height(10.dp))
                     }
                 } else {
-                    // Grid / Box View (2 items per row in LazyColumn chunk)
+                    // Grid View with small category badge icon and long-press
                     val chunks = filteredItems.chunked(2)
                     items(chunks) { rowItems ->
                         Row(
@@ -355,7 +365,17 @@ fun HomeScreen(
                         ) {
                             for (item in rowItems) {
                                 Box(modifier = Modifier.weight(1f)) {
-                                    GridSaveCard(item = item)
+                                    GridSaveCard(
+                                        item = item,
+                                        onLongPress = { previewItem = item },
+                                        onClick = {
+                                            if (item.url.isNotBlank()) {
+                                                try {
+                                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
+                                                } catch (_: Exception) {}
+                                            }
+                                        }
+                                    )
                                 }
                             }
                             if (rowItems.size == 1) {
@@ -378,7 +398,6 @@ fun HomeScreen(
                 selectedTab = activeTab,
                 onTabSelect = { tabIndex ->
                     if (tabIndex == 2) {
-                        // Center + action triggers Add Dialog
                         showAddDialog = true
                     } else {
                         activeTab = tabIndex
@@ -390,20 +409,42 @@ fun HomeScreen(
             )
         }
 
-        // Add Save Bottom Sheet (Strict real data input - Zero mock data)
+        // 6. Save Hub Bottom Sheet (Paste any URL, Notes, Photos, Collections, Review, Product & Manual Search)
         if (showAddDialog) {
-            AddSaveBottomSheet(
+            SaveHubBottomSheet(
                 onDismiss = { showAddDialog = false },
-                onSave = { title, url ->
-                    val newItem = SaveItem(
-                        id = System.currentTimeMillis().toString(),
-                        title = title.ifBlank { url },
-                        url = url,
-                        type = "Link",
-                        dateAdded = "Just now"
-                    )
+                onItemSaved = { newItem ->
                     savedItems.add(0, newItem)
-                    showAddDialog = false
+                }
+            )
+        }
+
+        // 7. Instagram-Style Long-Press / Hold Preview Pop-Up with Actions
+        if (previewItem != null) {
+            ItemPreviewPopup(
+                item = previewItem,
+                onDismiss = { previewItem = null },
+                onOpen = { item ->
+                    if (item.url.isNotBlank()) {
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
+                        } catch (_: Exception) {}
+                    }
+                },
+                onToggleFavorite = { item ->
+                    val index = savedItems.indexOfFirst { it.id == item.id }
+                    if (index != -1) {
+                        val updated = item.copy(isFavorite = !item.isFavorite)
+                        savedItems[index] = updated
+                        previewItem = updated
+                    }
+                },
+                onDetails = { item ->
+                    // Details action
+                },
+                onDelete = { item ->
+                    savedItems.removeAll { it.id == item.id }
+                    previewItem = null
                 }
             )
         }
@@ -411,39 +452,75 @@ fun HomeScreen(
 }
 
 @Composable
-fun RecentSaveRow(item: SaveItem) {
+fun RecentSaveRow(
+    item: SaveItem,
+    onLongPress: () -> Unit,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(AppInputBg, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(AppInputBg)
+            .pointerInput(item.id) {
+                detectTapGestures(
+                    onLongPress = { onLongPress() },
+                    onTap = { onClick() }
+                )
+            }
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .background(AppWhite, RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = item.title.take(1).uppercase(),
-                fontWeight = FontWeight.Bold,
-                color = AppBlack,
-                fontSize = 16.sp
+        // Thumbnail with small corner Category Badge Icon
+        Box(modifier = Modifier.size(44.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(AppWhite),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = getCategoryIcon(item.category),
+                    contentDescription = null,
+                    tint = AppBlack,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Small source badge icon
+            CategoryBadgeIcon(
+                category = item.category,
+                size = 18,
+                iconSize = 10,
+                modifier = Modifier.align(Alignment.BottomEnd)
             )
         }
+
         Spacer(modifier = Modifier.width(12.dp))
+
         Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = item.title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = AppBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (item.isFavorite) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = null,
+                        tint = AppAccentRed,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
             Text(
-                text = item.title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = AppBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = item.url,
+                text = "${item.sourcePlatform} • ${item.dateAdded}",
                 fontSize = 12.sp,
                 color = AppLightGrey,
                 maxLines = 1,
@@ -454,42 +531,76 @@ fun RecentSaveRow(item: SaveItem) {
 }
 
 @Composable
-fun ListSaveCard(item: SaveItem) {
+fun ListSaveCard(
+    item: SaveItem,
+    onLongPress: () -> Unit,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(AppWhite, RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(AppWhite)
             .border(1.dp, AppBorderGrey, RoundedCornerShape(14.dp))
+            .pointerInput(item.id) {
+                detectTapGestures(
+                    onLongPress = { onLongPress() },
+                    onTap = { onClick() }
+                )
+            }
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .background(AppInputBg, RoundedCornerShape(10.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = item.title.take(1).uppercase(),
-                fontWeight = FontWeight.Bold,
-                color = AppBlack,
-                fontSize = 17.sp
+        Box(modifier = Modifier.size(46.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(AppInputBg),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = getCategoryIcon(item.category),
+                    contentDescription = null,
+                    tint = AppBlack,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            CategoryBadgeIcon(
+                category = item.category,
+                size = 18,
+                iconSize = 10,
+                modifier = Modifier.align(Alignment.BottomEnd)
             )
         }
+
         Spacer(modifier = Modifier.width(12.dp))
+
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = item.title,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = AppBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = item.title,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = AppBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (item.isFavorite) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = null,
+                        tint = AppAccentRed,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = item.url,
-                fontSize = 13.sp,
+                text = "${item.sourcePlatform} • ${item.dateAdded}",
+                fontSize = 12.sp,
                 color = AppLightGrey,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -499,39 +610,63 @@ fun ListSaveCard(item: SaveItem) {
 }
 
 @Composable
-fun GridSaveCard(item: SaveItem) {
+fun GridSaveCard(
+    item: SaveItem,
+    onLongPress: () -> Unit,
+    onClick: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(AppWhite, RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(AppWhite)
             .border(1.dp, AppBorderGrey, RoundedCornerShape(14.dp))
+            .pointerInput(item.id) {
+                detectTapGestures(
+                    onLongPress = { onLongPress() },
+                    onTap = { onClick() }
+                )
+            }
             .padding(14.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .background(AppInputBg, RoundedCornerShape(10.dp)),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = item.title.take(1).uppercase(),
-                fontWeight = FontWeight.Bold,
-                color = AppBlack,
-                fontSize = 16.sp
-            )
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(AppInputBg),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = getCategoryIcon(item.category),
+                    contentDescription = null,
+                    tint = AppBlack,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            CategoryBadgeIcon(category = item.category, size = 20, iconSize = 11)
         }
+
         Spacer(modifier = Modifier.height(12.dp))
+
         Text(
             text = item.title,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             color = AppBlack,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
+
         Spacer(modifier = Modifier.height(4.dp))
+
         Text(
-            text = item.url,
+            text = item.sourcePlatform,
             fontSize = 12.sp,
             color = AppLightGrey,
             maxLines = 1,
@@ -554,7 +689,6 @@ fun LiquidGlassBottomBar(
         Pair(Icons.Filled.Person, Icons.Outlined.Person)
     )
 
-    // Frosted liquid glass card container with blur background effect
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -566,7 +700,7 @@ fun LiquidGlassBottomBar(
                 spotColor = Color(0x26000000)
             )
             .clip(RoundedCornerShape(32.dp))
-            .background(Color(0xE6FFFFFF)) // 90% translucent white frosted glass
+            .background(Color(0xE6FFFFFF))
             .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(32.dp))
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center
@@ -581,7 +715,6 @@ fun LiquidGlassBottomBar(
                 val isCenterPlus = index == 2
 
                 if (isCenterPlus) {
-                    // Center prominent circular save button
                     Box(
                         modifier = Modifier
                             .size(46.dp)
@@ -598,7 +731,6 @@ fun LiquidGlassBottomBar(
                         )
                     }
                 } else {
-                    // Standard tab item with smooth animation
                     val iconTint by animateColorAsState(
                         targetValue = if (isSelected) AppBlack else AppLightGrey,
                         label = "IconTint"
@@ -620,71 +752,6 @@ fun LiquidGlassBottomBar(
                     }
                 }
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AddSaveBottomSheet(
-    onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState()
-    val scope = rememberCoroutineScope()
-    var urlText by remember { mutableStateOf("") }
-    var titleText by remember { mutableStateOf("") }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = AppWhite,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 36.dp)
-        ) {
-            Text(
-                text = "Save Link",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = AppBlack
-            )
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            AppInputField(
-                label = "Link URL",
-                value = urlText,
-                onValueChange = { urlText = it },
-                placeholder = "Paste link here..."
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            AppInputField(
-                label = "Title",
-                value = titleText,
-                onValueChange = { titleText = it },
-                placeholder = "Add title (optional)"
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            PrimaryPillButton(
-                text = "Save",
-                onClick = {
-                    if (urlText.isNotBlank()) {
-                        scope.launch {
-                            sheetState.hide()
-                            onSave(titleText, urlText.trim())
-                        }
-                    }
-                }
-            )
         }
     }
 }
