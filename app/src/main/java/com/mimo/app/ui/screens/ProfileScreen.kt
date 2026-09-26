@@ -115,6 +115,7 @@ fun ProfileScreen(
     savedItems: List<SaveItem>,
     modifier: Modifier = Modifier,
     onItemLongPress: (SaveItem) -> Unit = {},
+    onItemClick: (SaveItem) -> Unit = {},
     onSignOut: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -549,13 +550,7 @@ fun ProfileScreen(
                                 ProfileGridSquare(
                                     item = item,
                                     onLongPress = { onItemLongPress(item) },
-                                    onClick = {
-                                        if (item.url.isNotBlank()) {
-                                            try {
-                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
-                                            } catch (_: Exception) {}
-                                        }
-                                    }
+                                    onClick = { onItemClick(item) }
                                 )
                             }
                         }

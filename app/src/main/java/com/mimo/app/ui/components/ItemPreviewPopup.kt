@@ -1,7 +1,8 @@
 package com.mimo.app.ui.components
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -73,61 +74,89 @@ fun ItemPreviewPopup(
 
     val coroutineScope = rememberCoroutineScope()
     var isClosing by remember { mutableStateOf(false) }
-    var hasAppeared by remember { mutableStateOf(false) }
+
+    // Authentic mobile OS home screen icon-to-window spring animation
+    // Starts from small icon size (0.28f scale) and smoothly expands with spring overshoot
+    val cardScale = remember { Animatable(0.28f) }
+    val cardAlpha = remember { Animatable(0f) }
+    val bgAlpha = remember { Animatable(0f) }
+    val actionsTranslationY = remember { Animatable(45f) }
+    val actionsAlpha = remember { Animatable(0f) }
 
     LaunchedEffect(item) {
-        hasAppeared = true
+        if (item != null) {
+            launch {
+                bgAlpha.animateTo(
+                    targetValue = 0.65f,
+                    animationSpec = tween(durationMillis = 200)
+                )
+            }
+            launch {
+                cardAlpha.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 150)
+                )
+            }
+            launch {
+                // Mobile OS icon-to-window expansion spring
+                cardScale.animateTo(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        dampingRatio = 0.68f, // physical spring bounce
+                        stiffness = 380f     // smooth medium stiffness
+                    )
+                )
+            }
+            // Actions slide up smoothly right after the card expands
+            delay(50)
+            launch {
+                actionsAlpha.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 160)
+                )
+            }
+            launch {
+                actionsTranslationY.animateTo(
+                    targetValue = 0f,
+                    animationSpec = spring(
+                        dampingRatio = 0.75f,
+                        stiffness = 400f
+                    )
+                )
+            }
+        }
     }
 
     val closeWithAnimation: () -> Unit = {
         if (!isClosing) {
             isClosing = true
             coroutineScope.launch {
-                delay(180)
+                launch { bgAlpha.animateTo(0f, tween(160)) }
+                launch { cardAlpha.animateTo(0f, tween(140)) }
+                launch {
+                    cardScale.animateTo(
+                        targetValue = 0.28f,
+                        animationSpec = spring(dampingRatio = 0.85f, stiffness = 500f)
+                    )
+                }
+                launch { actionsAlpha.animateTo(0f, tween(100)) }
+                launch { actionsTranslationY.animateTo(35f, tween(140)) }
+                delay(160)
                 onDismiss()
             }
         }
     }
 
-    // Animated overlay opacity
-    val bgAlpha by animateFloatAsState(
-        targetValue = if (hasAppeared && !isClosing) 0.65f else 0f,
-        animationSpec = tween(durationMillis = 220),
-        label = "BgAlpha"
-    )
-
-    // Animated card scale with smooth spring bounce (Instagram style)
-    val cardScale by animateFloatAsState(
-        targetValue = if (hasAppeared && !isClosing) 1f else 0.72f,
-        animationSpec = spring(
-            dampingRatio = 0.72f,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "CardScale"
-    )
-
-    // Animated card alpha
-    val cardAlpha by animateFloatAsState(
-        targetValue = if (hasAppeared && !isClosing) 1f else 0f,
-        animationSpec = tween(durationMillis = 200),
-        label = "CardAlpha"
-    )
-
-    // Animated action bar slide
-    val actionsTranslationY by animateFloatAsState(
-        targetValue = if (hasAppeared && !isClosing) 0f else 35f,
-        animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "ActionsSlide"
-    )
+    // Intercept back button to dismiss smoothly
+    BackHandler {
+        closeWithAnimation()
+    }
 
     // Full screen overlay with frosted blur effect
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = bgAlpha))
+            .background(Color.Black.copy(alpha = bgAlpha.value))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -140,9 +169,9 @@ fun ItemPreviewPopup(
                 .fillMaxWidth()
                 .padding(horizontal = 28.dp)
                 .graphicsLayer {
-                    scaleX = cardScale
-                    scaleY = cardScale
-                    alpha = cardAlpha
+                    scaleX = cardScale.value
+                    scaleY = cardScale.value
+                    alpha = cardAlpha.value
                 },
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -260,8 +289,8 @@ fun ItemPreviewPopup(
             Row(
                 modifier = Modifier
                     .graphicsLayer {
-                        translationY = actionsTranslationY
-                        alpha = cardAlpha
+                        translationY = actionsTranslationY.value
+                        alpha = actionsAlpha.value
                     }
                     .shadow(16.dp, RoundedCornerShape(20.dp))
                     .clip(RoundedCornerShape(20.dp))

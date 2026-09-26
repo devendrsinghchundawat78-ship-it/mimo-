@@ -111,13 +111,14 @@ fun SaveHubBottomSheet(
             HubSheetMode.INPUT_URL -> {
                 UrlSaveContent(
                     onBack = { currentMode = HubSheetMode.HUB_MAIN },
-                    onSave = { title, url, source, description, imageUrl ->
+                    onSave = { title, url, source, description, imageUrl, videoUrl ->
                         val newItem = SaveItem(
                             id = System.currentTimeMillis().toString(),
                             title = title.ifBlank { url },
                             subtitle = description,
                             url = url,
                             imageUrl = imageUrl,
+                            videoUrl = videoUrl,
                             category = ItemCategory.URL,
                             sourcePlatform = source,
                             dateAdded = "Just now"
@@ -475,7 +476,7 @@ fun ManualCategoryChip(
 @Composable
 fun UrlSaveContent(
     onBack: () -> Unit,
-    onSave: (String, String, String, String, String?) -> Unit
+    onSave: (String, String, String, String, String?, String?) -> Unit
 ) {
     var urlInput by remember { mutableStateOf("") }
     var titleInput by remember { mutableStateOf("") }
@@ -537,11 +538,12 @@ fun UrlSaveContent(
                                 metadata.canonicalUrl,
                                 metadata.platform,
                                 metadata.description,
-                                metadata.imageUrl
+                                metadata.imageUrl,
+                                metadata.videoUrl
                             )
                         } catch (_: Exception) {
                             val finalTitle = titleInput.ifBlank { urlInput.trim() }
-                            onSave(finalTitle, urlInput.trim(), "Web", "", null)
+                            onSave(finalTitle, urlInput.trim(), "Web", "", null, null)
                         } finally {
                             isFetching = false
                         }

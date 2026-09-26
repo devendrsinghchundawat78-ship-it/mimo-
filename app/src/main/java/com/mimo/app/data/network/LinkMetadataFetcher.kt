@@ -12,6 +12,7 @@ data class ParsedMetadata(
     val title: String,
     val description: String,
     val imageUrl: String?,
+    val videoUrl: String? = null,
     val platform: String,
     val canonicalUrl: String
 )
@@ -88,10 +89,20 @@ object LinkMetadataFetcher {
                 }
             }
 
+            var video = extractTag(html, "og:video")
+                ?: extractTag(html, "og:video:secure_url")
+                ?: extractTag(html, "og:video:url")
+                ?: extractTag(html, "twitter:player:stream")
+
+            if (video == null && (cleanUrl.endsWith(".mp4") || cleanUrl.endsWith(".webm") || cleanUrl.contains(".mp4?"))) {
+                video = cleanUrl
+            }
+
             ParsedMetadata(
                 title = unescape(title),
                 description = unescape(description),
                 imageUrl = image,
+                videoUrl = video,
                 platform = platform,
                 canonicalUrl = cleanUrl
             )

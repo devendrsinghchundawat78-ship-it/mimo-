@@ -12,6 +12,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -112,6 +114,9 @@ fun HomeScreen(
     // State for Instagram-style hold preview
     var previewItem by remember { mutableStateOf<SaveItem?>(null) }
 
+    // State for Detail Screen (in-app photo/video streaming)
+    var selectedDetailItem by remember { mutableStateOf<SaveItem?>(null) }
+
     // Real live state collection for saves
     val savedItems = remember { mutableStateListOf<SaveItem>() }
 
@@ -155,6 +160,7 @@ fun HomeScreen(
                     SearchScreen(
                         savedItems = savedItems,
                         onItemLongPress = { previewItem = it },
+                        onItemClick = { selectedDetailItem = it },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -163,6 +169,7 @@ fun HomeScreen(
                     ProfileScreen(
                         savedItems = savedItems,
                         onItemLongPress = { previewItem = it },
+                        onItemClick = { selectedDetailItem = it },
                         onSignOut = onSignOut,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -315,11 +322,7 @@ fun HomeScreen(
                                                 item = item,
                                                 onLongPress = { previewItem = item },
                                                 onClick = {
-                                                    if (item.url.isNotBlank()) {
-                                                        try {
-                                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
-                                                        } catch (_: Exception) {}
-                                                    }
+                                                    selectedDetailItem = item
                                                 }
                                             )
                                         }
@@ -407,11 +410,7 @@ fun HomeScreen(
                                         item = item,
                                         onLongPress = { previewItem = item },
                                         onClick = {
-                                            if (item.url.isNotBlank()) {
-                                                try {
-                                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
-                                                } catch (_: Exception) {}
-                                            }
+                                            selectedDetailItem = item
                                         }
                                     )
                                     Spacer(modifier = Modifier.height(10.dp))
@@ -430,11 +429,7 @@ fun HomeScreen(
                                                     item = item,
                                                     onLongPress = { previewItem = item },
                                                     onClick = {
-                                                        if (item.url.isNotBlank()) {
-                                                            try {
-                                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
-                                                            } catch (_: Exception) {}
-                                                        }
+                                                        selectedDetailItem = item
                                                     }
                                                 )
                                             }
@@ -489,11 +484,8 @@ fun HomeScreen(
                 item = previewItem,
                 onDismiss = { previewItem = null },
                 onOpen = { item ->
-                    if (item.url.isNotBlank()) {
-                        try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
-                        } catch (_: Exception) {}
-                    }
+                    selectedDetailItem = item
+                    previewItem = null
                 },
                 onToggleFavorite = { item ->
                     val index = savedItems.indexOfFirst { it.id == item.id }
@@ -501,16 +493,68 @@ fun HomeScreen(
                         val updated = item.copy(isFavorite = !item.isFavorite)
                         savedItems[index] = updated
                         previewItem = updated
+                        if (selectedDetailItem?.id == item.id) {
+                            selectedDetailItem = updated
+                        }
                     }
                 },
                 onDetails = { item ->
-                    // Details action
+                    selectedDetailItem = item
+                    previewItem = null
                 },
                 onDelete = { item ->
                     savedItems.removeAll { it.id == item.id }
+                    if (selectedDetailItem?.id == item.id) {
+                        selectedDetailItem = null
+                    }
                     previewItem = null
                 }
             )
+        }
+
+        // 8. In-App Detail Screen (Full photo/video streaming, floating liquid glass controls)
+        AnimatedVisibility(
+            visible = selectedDetailItem != null,
+            enter = fadeIn(animationSpec = tween(220)) + scaleIn(
+                animationSpec = spring(
+                    dampingRatio = 0.76f,
+                    stiffness = Spring.StiffnessMediumLow
+                ),
+                initialScale = 0.84f
+            ),
+            exit = fadeOut(animationSpec = tween(180)) + scaleOut(
+                animationSpec = spring(
+                    dampingRatio = 0.85f,
+                    stiffness = Spring.StiffnessMediumLow
+                ),
+                targetScale = 0.88f
+            )
+        ) {
+            selectedDetailItem?.let { currentDetailItem ->
+                DetailScreen(
+                    item = currentDetailItem,
+                    allSavedItems = savedItems,
+                    onBack = { selectedDetailItem = null },
+                    onSelectItem = { nextItem ->
+                        selectedDetailItem = nextItem
+                    },
+                    onToggleFavorite = { itemToFav ->
+                        val index = savedItems.indexOfFirst { it.id == itemToFav.id }
+                        if (index != -1) {
+                            val updated = itemToFav.copy(isFavorite = !itemToFav.isFavorite)
+                            savedItems[index] = updated
+                            selectedDetailItem = updated
+                        }
+                    },
+                    onDelete = { itemToDel ->
+                        savedItems.removeAll { it.id == itemToDel.id }
+                        selectedDetailItem = null
+                    },
+                    onItemLongPress = { item ->
+                        previewItem = item
+                    }
+                )
+            }
         }
     }
 }

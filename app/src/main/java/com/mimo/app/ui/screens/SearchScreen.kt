@@ -97,7 +97,8 @@ data class SearchCategory(
 fun SearchScreen(
     savedItems: List<SaveItem>,
     modifier: Modifier = Modifier,
-    onItemLongPress: (SaveItem) -> Unit = {}
+    onItemLongPress: (SaveItem) -> Unit = {},
+    onItemClick: (SaveItem) -> Unit = {}
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -359,13 +360,7 @@ fun SearchScreen(
                         SearchResultCard(
                             item = item,
                             onLongPress = { onItemLongPress(item) },
-                            onClick = {
-                                if (item.url.isNotBlank()) {
-                                    try {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
-                                    } catch (_: Exception) {}
-                                }
-                            }
+                            onClick = { onItemClick(item) }
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                     }

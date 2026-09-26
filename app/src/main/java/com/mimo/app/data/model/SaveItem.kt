@@ -22,6 +22,7 @@ data class SaveItem(
     val sourcePlatform: String = "Web", // e.g. Instagram, TikTok, Web, Note, Media
     val dateAdded: String,
     val imageUrl: String? = null,
+    val videoUrl: String? = null,
     val noteContent: String? = null,
     val isFavorite: Boolean = false
 )
