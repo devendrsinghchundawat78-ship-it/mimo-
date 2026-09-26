@@ -37,15 +37,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.mimo.app.data.model.SaveItem
 import com.mimo.app.ui.theme.AppAccentRed
 import com.mimo.app.ui.theme.AppBlack
@@ -82,7 +83,7 @@ fun ItemPreviewPopup(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp),
+                .padding(horizontal = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Instagram-Style Scaled Pop-Up Card
@@ -119,42 +120,60 @@ fun ItemPreviewPopup(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    // Media preview container
+                    // Media preview container with real AsyncImage
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(140.dp)
+                            .height(160.dp)
                             .clip(RoundedCornerShape(14.dp))
                             .background(AppInputBg),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = getCategoryIcon(item.category),
-                            contentDescription = null,
-                            tint = AppLightGrey,
-                            modifier = Modifier.size(48.dp)
-                        )
+                        if (!item.imageUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = item.imageUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Icon(
+                                imageVector = getCategoryIcon(item.category),
+                                contentDescription = null,
+                                tint = AppLightGrey,
+                                modifier = Modifier.size(48.dp)
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     // Title
                     Text(
                         text = item.title,
-                        fontSize = 17.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = AppBlack,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    if (item.url.isNotBlank()) {
+                    if (item.subtitle.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = item.subtitle,
+                            fontSize = 13.sp,
+                            color = AppLightGrey,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    } else if (item.url.isNotBlank()) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = item.url,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             color = AppLightGrey,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis

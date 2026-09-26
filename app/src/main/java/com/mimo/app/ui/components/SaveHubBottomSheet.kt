@@ -1,5 +1,8 @@
 package com.mimo.app.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +33,7 @@ import androidx.compose.material.icons.filled.RateReview
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -40,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,11 +55,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mimo.app.data.model.ItemCategory
 import com.mimo.app.data.model.SaveItem
+import com.mimo.app.data.network.LinkMetadataFetcher
 import com.mimo.app.ui.theme.AppBlack
 import com.mimo.app.ui.theme.AppBorderGrey
 import com.mimo.app.ui.theme.AppInputBg
 import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
+import kotlinx.coroutines.launch
 
 enum class HubSheetMode {
     HUB_MAIN,
@@ -104,11 +111,13 @@ fun SaveHubBottomSheet(
             HubSheetMode.INPUT_URL -> {
                 UrlSaveContent(
                     onBack = { currentMode = HubSheetMode.HUB_MAIN },
-                    onSave = { title, url, source ->
+                    onSave = { title, url, source, description, imageUrl ->
                         val newItem = SaveItem(
                             id = System.currentTimeMillis().toString(),
                             title = title.ifBlank { url },
+                            subtitle = description,
                             url = url,
+                            imageUrl = imageUrl,
                             category = ItemCategory.URL,
                             sourcePlatform = source,
                             dateAdded = "Just now"
@@ -148,6 +157,7 @@ fun SaveHubBottomSheet(
                             id = System.currentTimeMillis().toString(),
                             title = title.ifBlank { "Photo" },
                             subtitle = detail,
+                            imageUrl = if (detail.startsWith("http")) detail else null,
                             category = ItemCategory.PHOTO,
                             sourcePlatform = "Photos",
                             dateAdded = "Just now"
@@ -264,7 +274,6 @@ fun SaveHubMainContent(
             .verticalScroll(rememberScrollState())
     ) {
         // 2-Column Grid of 6 Action Boxes
-        // Row 1: Paste any URL & Notes
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -289,7 +298,6 @@ fun SaveHubMainContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Row 2: Photos & Collections
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -314,7 +322,6 @@ fun SaveHubMainContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Row 3: Review & Product
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -358,7 +365,6 @@ fun SaveHubMainContent(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Manual Categories: Films, Software, Products, TV Shows, Tutorials
         val manualCategories = listOf(
             Triple("Films", Icons.Default.Movie, ItemCategory.FILM),
             Triple("Software", Icons.Default.Code, ItemCategory.SOFTWARE),
@@ -469,22 +475,12 @@ fun ManualCategoryChip(
 @Composable
 fun UrlSaveContent(
     onBack: () -> Unit,
-    onSave: (String, String, String) -> Unit
+    onSave: (String, String, String, String, String?) -> Unit
 ) {
     var urlInput by remember { mutableStateOf("") }
     var titleInput by remember { mutableStateOf("") }
-
-    // Automatic platform detection from link
-    val detectedSource = remember(urlInput) {
-        val lower = urlInput.lowercase()
-        when {
-            lower.contains("instagram.com") || lower.contains("instagr.am") -> "Instagram"
-            lower.contains("tiktok.com") -> "TikTok"
-            lower.contains("youtube.com") || lower.contains("youtu.be") -> "YouTube"
-            lower.contains("twitter.com") || lower.contains("x.com") -> "X"
-            else -> "Web"
-        }
-    }
+    var isFetching by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -524,17 +520,59 @@ fun UrlSaveContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        PrimaryPillButton(
-            text = "Save Link",
-            onClick = {
-                if (urlInput.isNotBlank()) {
-                    val finalTitle = titleInput.ifBlank {
-                        if (detectedSource != "Web") "$detectedSource Post" else urlInput
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .clip(RoundedCornerShape(50.dp))
+                .background(if (isFetching) AppLightGrey else AppBlack)
+                .clickable(enabled = !isFetching && urlInput.isNotBlank()) {
+                    isFetching = true
+                    scope.launch {
+                        try {
+                            val metadata = LinkMetadataFetcher.fetch(urlInput.trim())
+                            val finalTitle = titleInput.ifBlank { metadata.title }
+                            onSave(
+                                finalTitle,
+                                metadata.canonicalUrl,
+                                metadata.platform,
+                                metadata.description,
+                                metadata.imageUrl
+                            )
+                        } catch (_: Exception) {
+                            val finalTitle = titleInput.ifBlank { urlInput.trim() }
+                            onSave(finalTitle, urlInput.trim(), "Web", "", null)
+                        } finally {
+                            isFetching = false
+                        }
                     }
-                    onSave(finalTitle, urlInput.trim(), detectedSource)
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            if (isFetching) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = AppWhite,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Saving...",
+                        color = AppWhite,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
+            } else {
+                Text(
+                    text = "Save Link",
+                    color = AppWhite,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
-        )
+        }
     }
 }
 

@@ -2,7 +2,13 @@ package com.mimo.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +64,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -65,7 +73,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mimo.app.data.model.ItemCategory
+import coil.compose.AsyncImage
 import com.mimo.app.data.model.SaveItem
 import com.mimo.app.ui.components.AppLogo
 import com.mimo.app.ui.components.CategoryBadgeIcon
@@ -93,7 +101,7 @@ fun HomeScreen(
     // State for Instagram-style hold preview
     var previewItem by remember { mutableStateOf<SaveItem?>(null) }
 
-    // Real state collection for saves (Zero mock data - genuine empty state until added)
+    // Real live state collection for saves
     val savedItems = remember { mutableStateListOf<SaveItem>() }
 
     val filteredItems = if (searchQuery.isBlank()) {
@@ -101,6 +109,7 @@ fun HomeScreen(
     } else {
         savedItems.filter {
             it.title.contains(searchQuery, ignoreCase = true) ||
+            it.subtitle.contains(searchQuery, ignoreCase = true) ||
             it.url.contains(searchQuery, ignoreCase = true) ||
             it.sourcePlatform.contains(searchQuery, ignoreCase = true)
         }
@@ -111,13 +120,13 @@ fun HomeScreen(
             .fillMaxSize()
             .background(AppWhite)
     ) {
-        // Main Screen Content (blurs when hold preview is active)
+        // Main Screen Content (blurs smoothly when hold preview is active)
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 20.dp)
                 .then(
-                    if (previewItem != null) Modifier.blur(16.dp) else Modifier
+                    if (previewItem != null) Modifier.blur(20.dp) else Modifier
                 )
         ) {
             Spacer(modifier = Modifier.height(16.dp))
@@ -225,7 +234,7 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 110.dp)
             ) {
-                // 3. Recently Saved Section (Vertical)
+                // 3. Recently Saved Section - Distinct Horizontal Sliding Carousel (LazyRow)
                 item {
                     Text(
                         text = "Recently Saved",
@@ -240,7 +249,8 @@ fun HomeScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(90.dp)
-                                .background(AppInputBg, RoundedCornerShape(14.dp)),
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(AppInputBg),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -250,19 +260,25 @@ fun HomeScreen(
                             )
                         }
                     } else {
-                        savedItems.take(3).forEach { item ->
-                            RecentSaveRow(
-                                item = item,
-                                onLongPress = { previewItem = item },
-                                onClick = {
-                                    if (item.url.isNotBlank()) {
-                                        try {
-                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
-                                        } catch (_: Exception) {}
+                        // Horizontal Slide Carousel
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(savedItems.take(5), key = { "recent_" + it.id }) { item ->
+                                RecentSaveCarouselCard(
+                                    item = item,
+                                    onLongPress = { previewItem = item },
+                                    onClick = {
+                                        if (item.url.isNotBlank()) {
+                                            try {
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
+                                            } catch (_: Exception) {}
+                                        }
                                     }
-                                }
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
+                                )
+                            }
                         }
                     }
 
@@ -311,14 +327,15 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                // All Saves List / Grid
+                // All Saves List / Grid with Smooth Crossfade Animation
                 if (filteredItems.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(160.dp)
-                                .background(AppInputBg, RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(AppInputBg)
                                 .padding(20.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -340,7 +357,7 @@ fun HomeScreen(
                         }
                     }
                 } else if (!isGridView) {
-                    // List View with small category badge icon and long-press
+                    // List View with real thumbnails and descriptions
                     items(filteredItems, key = { it.id }) { item ->
                         ListSaveCard(
                             item = item,
@@ -356,7 +373,7 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(10.dp))
                     }
                 } else {
-                    // Grid View with small category badge icon and long-press
+                    // Grid View with real thumbnails and descriptions
                     val chunks = filteredItems.chunked(2)
                     items(chunks) { rowItems ->
                         Row(
@@ -409,7 +426,7 @@ fun HomeScreen(
             )
         }
 
-        // 6. Save Hub Bottom Sheet (Paste any URL, Notes, Photos, Collections, Review, Product & Manual Search)
+        // 6. Save Hub Bottom Sheet (Paste any URL with real metadata fetch, Notes, etc.)
         if (showAddDialog) {
             SaveHubBottomSheet(
                 onDismiss = { showAddDialog = false },
@@ -419,7 +436,7 @@ fun HomeScreen(
             )
         }
 
-        // 7. Instagram-Style Long-Press / Hold Preview Pop-Up with Actions
+        // 7. Instagram-Style Long-Press / Hold Preview Pop-Up
         if (previewItem != null) {
             ItemPreviewPopup(
                 item = previewItem,
@@ -451,82 +468,84 @@ fun HomeScreen(
     }
 }
 
+// Sleek Recent Save Card in Horizontal Sliding Carousel
 @Composable
-fun RecentSaveRow(
+fun RecentSaveCarouselCard(
     item: SaveItem,
     onLongPress: () -> Unit,
     onClick: () -> Unit
 ) {
-    Row(
+    Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(AppInputBg)
+            .width(150.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(AppWhite)
+            .border(1.dp, AppBorderGrey, RoundedCornerShape(16.dp))
             .pointerInput(item.id) {
                 detectTapGestures(
                     onLongPress = { onLongPress() },
                     onTap = { onClick() }
                 )
             }
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(10.dp)
+            .animateContentSize()
     ) {
-        // Thumbnail with small corner Category Badge Icon
-        Box(modifier = Modifier.size(44.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(AppWhite),
-                contentAlignment = Alignment.Center
-            ) {
+        // Thumbnail Box with real AsyncImage + Platform Badge
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(95.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(AppInputBg),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!item.imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = item.imageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
                 Icon(
                     imageVector = getCategoryIcon(item.category),
                     contentDescription = null,
-                    tint = AppBlack,
-                    modifier = Modifier.size(20.dp)
+                    tint = AppLightGrey,
+                    modifier = Modifier.size(32.dp)
                 )
             }
 
-            // Small source badge icon
+            // Top-right corner badge icon
             CategoryBadgeIcon(
                 category = item.category,
-                size = 18,
-                iconSize = 10,
-                modifier = Modifier.align(Alignment.BottomEnd)
+                size = 20,
+                iconSize = 11,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
             )
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = item.title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = AppBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                if (item.isFavorite) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = null,
-                        tint = AppAccentRed,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-            }
-            Text(
-                text = "${item.sourcePlatform} • ${item.dateAdded}",
-                fontSize = 12.sp,
-                color = AppLightGrey,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Text(
+            text = item.title,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = AppBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Text(
+            text = item.sourcePlatform,
+            fontSize = 11.sp,
+            color = AppLightGrey,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -539,32 +558,43 @@ fun ListSaveCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(AppWhite)
-            .border(1.dp, AppBorderGrey, RoundedCornerShape(14.dp))
+            .border(1.dp, AppBorderGrey, RoundedCornerShape(16.dp))
             .pointerInput(item.id) {
                 detectTapGestures(
                     onLongPress = { onLongPress() },
                     onTap = { onClick() }
                 )
             }
-            .padding(14.dp),
+            .padding(12.dp)
+            .animateContentSize(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier.size(46.dp)) {
+        // Real AsyncImage Thumbnail with small category badge
+        Box(modifier = Modifier.size(54.dp)) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(AppInputBg),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = getCategoryIcon(item.category),
-                    contentDescription = null,
-                    tint = AppBlack,
-                    modifier = Modifier.size(22.dp)
-                )
+                if (!item.imageUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = item.imageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(
+                        imageVector = getCategoryIcon(item.category),
+                        contentDescription = null,
+                        tint = AppBlack,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
 
             CategoryBadgeIcon(
@@ -575,7 +605,7 @@ fun ListSaveCard(
             )
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(14.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -597,13 +627,23 @@ fun ListSaveCard(
                     )
                 }
             }
+
+            if (item.subtitle.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = item.subtitle,
+                    fontSize = 12.sp,
+                    color = AppLightGrey,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = "${item.sourcePlatform} • ${item.dateAdded}",
-                fontSize = 12.sp,
-                color = AppLightGrey,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                fontSize = 11.sp,
+                color = AppLightGrey
             )
         }
     }
@@ -618,56 +658,80 @@ fun GridSaveCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(AppWhite)
-            .border(1.dp, AppBorderGrey, RoundedCornerShape(14.dp))
+            .border(1.dp, AppBorderGrey, RoundedCornerShape(16.dp))
             .pointerInput(item.id) {
                 detectTapGestures(
                     onLongPress = { onLongPress() },
                     onTap = { onClick() }
                 )
             }
-            .padding(14.dp)
+            .padding(12.dp)
+            .animateContentSize()
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        // Thumbnail with AsyncImage
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(110.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(AppInputBg),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(AppInputBg),
-                contentAlignment = Alignment.Center
-            ) {
+            if (!item.imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = item.imageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
                 Icon(
                     imageVector = getCategoryIcon(item.category),
                     contentDescription = null,
                     tint = AppBlack,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(32.dp)
                 )
             }
 
-            CategoryBadgeIcon(category = item.category, size = 20, iconSize = 11)
+            CategoryBadgeIcon(
+                category = item.category,
+                size = 20,
+                iconSize = 11,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+            )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         Text(
             text = item.title,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             color = AppBlack,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        if (item.subtitle.isNotBlank()) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = item.subtitle,
+                fontSize = 11.sp,
+                color = AppLightGrey,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Spacer(modifier = Modifier.height(2.dp))
 
         Text(
             text = item.sourcePlatform,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             color = AppLightGrey,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
