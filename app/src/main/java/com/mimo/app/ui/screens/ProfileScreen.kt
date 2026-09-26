@@ -99,6 +99,7 @@ import com.mimo.app.ui.theme.AppBorderGrey
 import com.mimo.app.ui.theme.AppInputBg
 import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
+import com.mimo.app.ui.theme.ThemeManager
 
 data class ProfileData(
     val displayName: String = "Devendra Singh",
@@ -318,6 +319,7 @@ fun ProfileScreen(
                     // Website / Social URL in Bio
                     if (profile.websiteUrl.isNotBlank()) {
                         Spacer(modifier = Modifier.height(6.dp))
+                        val linkColor = if (ThemeManager.isDark) Color(0xFF64B5F6) else Color(0xFF0066CC)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.clickable {
@@ -334,7 +336,7 @@ fun ProfileScreen(
                             Icon(
                                 imageVector = Icons.Default.Link,
                                 contentDescription = "Link",
-                                tint = Color(0xFF0066CC),
+                                tint = linkColor,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -342,7 +344,7 @@ fun ProfileScreen(
                                 text = profile.websiteUrl.removePrefix("https://").removePrefix("http://"),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF0066CC),
+                                color = linkColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -935,7 +937,29 @@ fun SettingsBottomSheet(
                 // Group 2: Preferences
                 item {
                     SettingsSection(title = "Preferences") {
-                        SettingsRow(label = "Appearance", value = "Light")
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Dark Mode",
+                                fontSize = 14.sp,
+                                color = AppBlack
+                            )
+                            Switch(
+                                checked = ThemeManager.isDark,
+                                onCheckedChange = { ThemeManager.isDark = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = AppWhite,
+                                    checkedTrackColor = AppBlack,
+                                    uncheckedThumbColor = AppLightGrey,
+                                    uncheckedTrackColor = AppInputBg
+                                )
+                            )
+                        }
                         SettingsRow(label = "Default View", value = "Grid")
                         SettingsRow(label = "Language", value = "English")
                     }

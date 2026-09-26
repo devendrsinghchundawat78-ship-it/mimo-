@@ -82,6 +82,7 @@ import com.mimo.app.ui.components.getCategoryIcon
 import com.mimo.app.ui.theme.AppAccentRed
 import com.mimo.app.ui.theme.AppBlack
 import com.mimo.app.ui.theme.AppBorderGrey
+import com.mimo.app.ui.theme.AppCardBg
 import com.mimo.app.ui.theme.AppInputBg
 import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
@@ -471,7 +472,7 @@ fun SearchResultCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(AppWhite)
+            .background(AppCardBg)
             .border(1.dp, AppBorderGrey, RoundedCornerShape(16.dp))
             .pointerInput(item.id) {
                 detectTapGestures(

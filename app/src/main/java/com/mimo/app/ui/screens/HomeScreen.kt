@@ -6,6 +6,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,14 +16,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -61,8 +67,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -83,9 +91,11 @@ import com.mimo.app.ui.components.getCategoryIcon
 import com.mimo.app.ui.theme.AppAccentRed
 import com.mimo.app.ui.theme.AppBlack
 import com.mimo.app.ui.theme.AppBorderGrey
+import com.mimo.app.ui.theme.AppCardBg
 import com.mimo.app.ui.theme.AppInputBg
 import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
+import com.mimo.app.ui.theme.ThemeManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -516,7 +526,7 @@ fun RecentSaveCarouselCard(
         modifier = Modifier
             .width(150.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(AppWhite)
+            .background(AppCardBg)
             .border(1.dp, AppBorderGrey, RoundedCornerShape(16.dp))
             .pointerInput(item.id) {
                 detectTapGestures(
@@ -594,7 +604,7 @@ fun ListSaveCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(AppWhite)
+            .background(AppCardBg)
             .border(1.dp, AppBorderGrey, RoundedCornerShape(16.dp))
             .pointerInput(item.id) {
                 detectTapGestures(
@@ -693,7 +703,7 @@ fun GridSaveCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(AppWhite)
+            .background(AppCardBg)
             .border(1.dp, AppBorderGrey, RoundedCornerShape(16.dp))
             .pointerInput(item.id) {
                 detectTapGestures(
@@ -772,7 +782,7 @@ fun GridSaveCard(
     }
 }
 
-// iOS Style Liquid Glass Bottom Bar
+// iOS Style Liquid Glass Bottom Bar with Sliding Pill Animation
 @Composable
 fun LiquidGlassBottomBar(
     selectedTab: Int,
@@ -786,66 +796,198 @@ fun LiquidGlassBottomBar(
         Pair(Icons.Filled.Person, Icons.Outlined.Person)
     )
 
+    val isDark = ThemeManager.isDark
+
+    // Liquid Glass Background Gradient
+    val glassBgBrush = if (isDark) {
+        Brush.verticalGradient(
+            listOf(
+                Color(0xE6262626),
+                Color(0xD9181818)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            listOf(
+                Color(0xF0FFFFFF),
+                Color(0xD9EDEDED)
+            )
+        )
+    }
+
+    // Specular Highlight Border
+    val glassBorderBrush = if (isDark) {
+        Brush.verticalGradient(
+            listOf(
+                Color(0x59FFFFFF),
+                Color(0x1A000000)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            listOf(
+                Color(0xB3FFFFFF),
+                Color(0x33000000)
+            )
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(68.dp)
             .shadow(
-                elevation = 16.dp,
-                shape = RoundedCornerShape(32.dp),
-                ambientColor = Color(0x1A000000),
-                spotColor = Color(0x26000000)
+                elevation = 20.dp,
+                shape = RoundedCornerShape(34.dp),
+                ambientColor = if (isDark) Color(0x66000000) else Color(0x26000000),
+                spotColor = if (isDark) Color(0x80000000) else Color(0x33000000)
             )
-            .clip(RoundedCornerShape(32.dp))
-            .background(Color(0xE6FFFFFF))
-            .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(32.dp))
+            .clip(RoundedCornerShape(34.dp))
+            .background(glassBgBrush)
+            .border(1.5.dp, glassBorderBrush, RoundedCornerShape(34.dp))
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.CenterStart
         ) {
-            items.forEachIndexed { index, pair ->
-                val isSelected = selectedTab == index
-                val isCenterPlus = index == 2
+            val totalWidth = maxWidth
+            val tabCount = 5
+            val tabWidth = totalWidth / tabCount
+            val pillWidth = 50.dp
+            val pillHeight = 50.dp
 
-                if (isCenterPlus) {
+            // Target tab index for the sliding pill
+            val targetSlideIndex = when (selectedTab) {
+                0 -> 0f
+                1 -> 1f
+                3 -> 3f
+                4 -> 4f
+                else -> -1f
+            }
+
+            // Smooth animated slide with spring damping
+            val animatedPillPosition by animateFloatAsState(
+                targetValue = if (targetSlideIndex >= 0f) targetSlideIndex else 0f,
+                animationSpec = spring(
+                    dampingRatio = 0.72f,
+                    stiffness = Spring.StiffnessMediumLow
+                ),
+                label = "PillSlide"
+            )
+
+            // Pill opacity (fades out if center '+' is selected)
+            val pillAlpha by animateFloatAsState(
+                targetValue = if (targetSlideIndex >= 0f) 1f else 0f,
+                animationSpec = tween(durationMillis = 200),
+                label = "PillAlpha"
+            )
+
+            // Sliding Liquid Glass Capsule Pill Indicator
+            if (pillAlpha > 0.05f) {
+                val pillX = (tabWidth * animatedPillPosition) + (tabWidth - pillWidth) / 2
+                Box(
+                    modifier = Modifier
+                        .offset(x = pillX)
+                        .size(width = pillWidth, height = pillHeight)
+                        .graphicsLayer { alpha = pillAlpha }
+                        .clip(RoundedCornerShape(25.dp))
+                        .background(
+                            if (isDark) {
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFFFFFFF), Color(0xFFE8E8E8))
+                                )
+                            } else {
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFF1A1A1A), Color(0xFF000000))
+                                )
+                            }
+                        )
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = RoundedCornerShape(25.dp),
+                            ambientColor = if (isDark) Color(0x40FFFFFF) else Color(0x33000000)
+                        )
+                )
+            }
+
+            // 5 Interactive Tab Buttons
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                items.forEachIndexed { index, pair ->
+                    val isSelected = selectedTab == index
+                    val isCenterPlus = index == 2
+
                     Box(
                         modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(AppBlack)
-                            .clickable { onTabSelect(index) },
+                            .weight(1f)
+                            .height(68.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onTabSelect(index) }
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Save",
-                            tint = AppWhite,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                } else {
-                    val iconTint by animateColorAsState(
-                        targetValue = if (isSelected) AppBlack else AppLightGrey,
-                        label = "IconTint"
-                    )
+                        if (isCenterPlus) {
+                            // Center Action Plus Button with floating bounce
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (isDark) {
+                                            Brush.verticalGradient(
+                                                listOf(Color(0xFFFFFFFF), Color(0xFFDDDDDD))
+                                            )
+                                        } else {
+                                            Brush.verticalGradient(
+                                                listOf(Color(0xFF222222), Color(0xFF000000))
+                                            )
+                                        }
+                                    )
+                                    .shadow(6.dp, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Add Save",
+                                    tint = if (isDark) Color(0xFF121212) else Color(0xFFFFFFFF),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        } else {
+                            // Non-center Tab Icon with smooth scale & contrast tint
+                            val iconScale by animateFloatAsState(
+                                targetValue = if (isSelected) 1.15f else 1.0f,
+                                animationSpec = spring(
+                                    dampingRatio = 0.65f,
+                                    stiffness = Spring.StiffnessLow
+                                ),
+                                label = "IconScale"
+                            )
 
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .clickable { onTabSelect(index) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (isSelected) pair.first else pair.second,
-                            contentDescription = null,
-                            tint = iconTint,
-                            modifier = Modifier.size(22.dp)
-                        )
+                            val iconTint = if (isSelected) {
+                                if (isDark) Color(0xFF121212) else Color(0xFFFFFFFF)
+                            } else {
+                                if (isDark) Color(0xFFAAAAAA) else Color(0xFF888888)
+                            }
+
+                            Icon(
+                                imageVector = if (isSelected) pair.first else pair.second,
+                                contentDescription = null,
+                                tint = iconTint,
+                                modifier = Modifier
+                                    .size(23.dp)
+                                    .graphicsLayer {
+                                        scaleX = iconScale
+                                        scaleY = iconScale
+                                    }
+                            )
+                        }
                     }
                 }
             }

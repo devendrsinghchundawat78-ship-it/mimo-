@@ -1,13 +1,9 @@
 package com.mimo.app.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,12 +30,18 @@ import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -51,9 +53,12 @@ import com.mimo.app.data.model.SaveItem
 import com.mimo.app.ui.theme.AppAccentRed
 import com.mimo.app.ui.theme.AppBlack
 import com.mimo.app.ui.theme.AppBorderGrey
+import com.mimo.app.ui.theme.AppCardBg
 import com.mimo.app.ui.theme.AppInputBg
 import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun ItemPreviewPopup(
@@ -66,24 +71,79 @@ fun ItemPreviewPopup(
 ) {
     if (item == null) return
 
-    val interactionSource = remember { MutableInteractionSource() }
+    val coroutineScope = rememberCoroutineScope()
+    var isClosing by remember { mutableStateOf(false) }
+    var hasAppeared by remember { mutableStateOf(false) }
+
+    LaunchedEffect(item) {
+        hasAppeared = true
+    }
+
+    val closeWithAnimation: () -> Unit = {
+        if (!isClosing) {
+            isClosing = true
+            coroutineScope.launch {
+                delay(180)
+                onDismiss()
+            }
+        }
+    }
+
+    // Animated overlay opacity
+    val bgAlpha by animateFloatAsState(
+        targetValue = if (hasAppeared && !isClosing) 0.65f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "BgAlpha"
+    )
+
+    // Animated card scale with smooth spring bounce (Instagram style)
+    val cardScale by animateFloatAsState(
+        targetValue = if (hasAppeared && !isClosing) 1f else 0.72f,
+        animationSpec = spring(
+            dampingRatio = 0.72f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "CardScale"
+    )
+
+    // Animated card alpha
+    val cardAlpha by animateFloatAsState(
+        targetValue = if (hasAppeared && !isClosing) 1f else 0f,
+        animationSpec = tween(durationMillis = 200),
+        label = "CardAlpha"
+    )
+
+    // Animated action bar slide
+    val actionsTranslationY by animateFloatAsState(
+        targetValue = if (hasAppeared && !isClosing) 0f else 35f,
+        animationSpec = spring(
+            dampingRatio = 0.8f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "ActionsSlide"
+    )
 
     // Full screen overlay with frosted blur effect
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x99000000))
+            .background(Color.Black.copy(alpha = bgAlpha))
             .clickable(
-                interactionSource = interactionSource,
+                interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = onDismiss
+                onClick = closeWithAnimation
             ),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 28.dp),
+                .padding(horizontal = 28.dp)
+                .graphicsLayer {
+                    scaleX = cardScale
+                    scaleY = cardScale
+                    alpha = cardAlpha
+                },
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Instagram-Style Scaled Pop-Up Card
@@ -92,7 +152,8 @@ fun ItemPreviewPopup(
                     .fillMaxWidth()
                     .shadow(24.dp, RoundedCornerShape(22.dp))
                     .clip(RoundedCornerShape(22.dp))
-                    .background(AppWhite)
+                    .background(AppCardBg)
+                    .border(1.dp, AppBorderGrey, RoundedCornerShape(22.dp))
                     .padding(20.dp)
             ) {
                 Column {
@@ -193,54 +254,61 @@ fun ItemPreviewPopup(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // Action Buttons Bar below the pop-up
+            // Action Buttons Bar below the pop-up (Instagram style)
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(30.dp))
-                    .background(AppWhite)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    .graphicsLayer {
+                        translationY = actionsTranslationY
+                        alpha = cardAlpha
+                    }
+                    .shadow(16.dp, RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(AppCardBg)
+                    .border(1.dp, AppBorderGrey, RoundedCornerShape(20.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 1. Open
+                // Action 1: Open link
                 PopupActionButton(
                     icon = Icons.Default.OpenInNew,
                     label = "Open",
                     onClick = {
+                        closeWithAnimation()
                         onOpen(item)
-                        onDismiss()
                     }
                 )
 
-                // 2. Favorite
+                // Action 2: Favorite toggle
                 PopupActionButton(
                     icon = if (item.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    label = if (item.isFavorite) "Saved" else "Fav.",
-                    iconTint = if (item.isFavorite) AppAccentRed else AppBlack,
-                    onClick = { onToggleFavorite(item) }
+                    label = if (item.isFavorite) "Saved" else "Favorite",
+                    tint = if (item.isFavorite) AppAccentRed else AppBlack,
+                    onClick = {
+                        onToggleFavorite(item)
+                    }
                 )
 
-                // 3. Details
+                // Action 3: Details
                 PopupActionButton(
                     icon = Icons.Default.Info,
                     label = "Details",
                     onClick = {
+                        closeWithAnimation()
                         onDetails(item)
-                        onDismiss()
                     }
                 )
 
-                // 4. Delete
+                // Action 4: Delete
                 PopupActionButton(
                     icon = Icons.Default.DeleteOutline,
                     label = "Delete",
-                    iconTint = AppAccentRed,
-                    textColor = AppAccentRed,
+                    tint = AppAccentRed,
                     onClick = {
+                        closeWithAnimation()
                         onDelete(item)
-                        onDismiss()
                     }
                 )
             }
@@ -249,31 +317,39 @@ fun ItemPreviewPopup(
 }
 
 @Composable
-fun PopupActionButton(
+private fun PopupActionButton(
     icon: ImageVector,
     label: String,
-    iconTint: Color = AppBlack,
-    textColor: Color = AppBlack,
+    tint: Color = AppBlack,
     onClick: () -> Unit
 ) {
     Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = iconTint,
-            modifier = Modifier.size(22.dp)
-        )
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(AppInputBg),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = tint,
+                modifier = Modifier.size(18.dp)
+            )
+        }
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = label,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
-            color = textColor
+            color = tint
         )
     }
 }
