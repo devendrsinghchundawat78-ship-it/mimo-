@@ -174,6 +174,9 @@ fun AppNavigation() {
                 HomeScreen(
                     onProfileClick = {
                         // Profile destination
+                    },
+                    onSignOut = {
+                        navigateTo(Screen.WELCOME, forward = false)
                     }
                 )
             }

@@ -90,7 +90,8 @@ import com.mimo.app.ui.theme.AppWhite
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onProfileClick: () -> Unit = {}
+    onProfileClick: () -> Unit = {},
+    onSignOut: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
@@ -144,6 +145,15 @@ fun HomeScreen(
                     SearchScreen(
                         savedItems = savedItems,
                         onItemLongPress = { previewItem = it },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                4 -> {
+                    // INSTAGRAM-STYLE PROFILE SCREEN
+                    ProfileScreen(
+                        savedItems = savedItems,
+                        onItemLongPress = { previewItem = it },
+                        onSignOut = onSignOut,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
