@@ -1,8 +1,7 @@
 package com.mimo.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,18 +24,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.RateReview
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -49,19 +46,28 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mimo.app.R
 import com.mimo.app.data.model.ItemCategory
 import com.mimo.app.data.model.SaveItem
 import com.mimo.app.data.network.LinkMetadataFetcher
+import com.mimo.app.data.network.SupabaseSessionManager
+import com.mimo.app.data.repository.SaveRepository
+import com.mimo.app.ui.theme.AppAccentRed
 import com.mimo.app.ui.theme.AppBlack
 import com.mimo.app.ui.theme.AppBorderGrey
 import com.mimo.app.ui.theme.AppInputBg
 import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 enum class HubSheetMode {
     HUB_MAIN,
@@ -71,6 +77,7 @@ enum class HubSheetMode {
     INPUT_COLLECTION,
     INPUT_REVIEW,
     INPUT_PRODUCT,
+    INPUT_LOCATION,
     INPUT_MANUAL
 }
 
@@ -81,176 +88,294 @@ fun SaveHubBottomSheet(
     onItemSaved: (SaveItem) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+
     var currentMode by remember { mutableStateOf(HubSheetMode.HUB_MAIN) }
     var manualCategoryName by remember { mutableStateOf("") }
     var manualCategoryType by remember { mutableStateOf(ItemCategory.FILM) }
 
+    var isSaving by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf<String?>(null) }
+    var pendingRetryItem by remember { mutableStateOf<SaveItem?>(null) }
+
+    fun executeSave(item: SaveItem) {
+        val currentUserId = SupabaseSessionManager.getUserId().orEmpty()
+        if (currentUserId.isBlank()) {
+            saveError = "Please sign in to save items to cloud"
+            return
+        }
+
+        // Validate item
+        if (item.title.isBlank() && item.url.isBlank() && item.noteContent.isNullOrBlank()) {
+            saveError = "Please provide a title, link, or note content"
+            return
+        }
+
+        scope.launch {
+            isSaving = true
+            saveError = null
+            pendingRetryItem = item
+
+            val result = SaveRepository.saveItem(item)
+            isSaving = false
+
+            if (result.isSuccess) {
+                val savedItem = result.getOrNull() ?: item
+                onItemSaved(savedItem)
+                onDismiss()
+            } else {
+                saveError = result.exceptionOrNull()?.message ?: "Unable to save to cloud. Tap retry to attempt again."
+            }
+        }
+    }
+
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (!isSaving) onDismiss()
+        },
         sheetState = sheetState,
         containerColor = AppWhite,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
-        when (currentMode) {
-            HubSheetMode.HUB_MAIN -> {
-                SaveHubMainContent(
-                    onSelectUrl = { currentMode = HubSheetMode.INPUT_URL },
-                    onSelectNotes = { currentMode = HubSheetMode.INPUT_NOTE },
-                    onSelectPhotos = { currentMode = HubSheetMode.INPUT_PHOTO },
-                    onSelectCollections = { currentMode = HubSheetMode.INPUT_COLLECTION },
-                    onSelectReview = { currentMode = HubSheetMode.INPUT_REVIEW },
-                    onSelectProduct = { currentMode = HubSheetMode.INPUT_PRODUCT },
-                    onSelectManualCategory = { name, cat ->
-                        manualCategoryName = name
-                        manualCategoryType = cat
-                        currentMode = HubSheetMode.INPUT_MANUAL
-                    }
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Live Cloud Save Progress Indicator
+            if (isSaving) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AppBlack,
+                    trackColor = AppBorderGrey
                 )
             }
 
-            HubSheetMode.INPUT_URL -> {
-                UrlSaveContent(
-                    onBack = { currentMode = HubSheetMode.HUB_MAIN },
-                    onSave = { title, url, source, description, imageUrl, videoUrl ->
-                        val newItem = SaveItem(
-                            id = System.currentTimeMillis().toString(),
-                            title = title.ifBlank { url },
-                            subtitle = description,
-                            url = url,
-                            imageUrl = imageUrl,
-                            videoUrl = videoUrl,
-                            category = ItemCategory.URL,
-                            sourcePlatform = source,
-                            dateAdded = "Just now"
+            // Real Error Banner with Genuine Retry Option (No Fake Success)
+            AnimatedVisibility(visible = saveError != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFFFF0F0))
+                        .border(1.dp, AppAccentRed.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = saveError.orEmpty(),
+                        color = AppAccentRed,
+                        fontSize = 13.sp,
+                        modifier = Modifier.weight(1f),
+                        lineHeight = 17.sp
+                    )
+                    if (pendingRetryItem != null) {
+                        Text(
+                            text = "Retry",
+                            color = AppAccentRed,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable {
+                                    pendingRetryItem?.let { executeSave(it) }
+                                }
+                                .padding(start = 12.dp)
                         )
-                        onItemSaved(newItem)
-                        onDismiss()
                     }
-                )
+                }
             }
 
-            HubSheetMode.INPUT_NOTE -> {
-                NoteSaveContent(
-                    onBack = { currentMode = HubSheetMode.HUB_MAIN },
-                    onSave = { title, note ->
-                        val newItem = SaveItem(
-                            id = System.currentTimeMillis().toString(),
-                            title = title.ifBlank { "Untitled Note" },
-                            noteContent = note,
-                            category = ItemCategory.NOTE,
-                            sourcePlatform = "Notes",
-                            dateAdded = "Just now"
-                        )
-                        onItemSaved(newItem)
-                        onDismiss()
-                    }
-                )
-            }
+            when (currentMode) {
+                HubSheetMode.HUB_MAIN -> {
+                    SaveHubMainContent(
+                        onSelectUrl = { currentMode = HubSheetMode.INPUT_URL },
+                        onSelectNotes = { currentMode = HubSheetMode.INPUT_NOTE },
+                        onSelectPhotos = { currentMode = HubSheetMode.INPUT_PHOTO },
+                        onSelectCollections = { currentMode = HubSheetMode.INPUT_COLLECTION },
+                        onSelectReview = { currentMode = HubSheetMode.INPUT_REVIEW },
+                        onSelectProduct = { currentMode = HubSheetMode.INPUT_PRODUCT },
+                        onSelectLocation = { currentMode = HubSheetMode.INPUT_LOCATION },
+                        onSelectManualCategory = { name, cat ->
+                            manualCategoryName = name
+                            manualCategoryType = cat
+                            currentMode = HubSheetMode.INPUT_MANUAL
+                        }
+                    )
+                }
 
-            HubSheetMode.INPUT_PHOTO -> {
-                GenericSaveContent(
-                    titleLabel = "Photo Title",
-                    detailLabel = "Image URL or Caption",
-                    categoryTitle = "Save Photo",
-                    onBack = { currentMode = HubSheetMode.HUB_MAIN },
-                    onSave = { title, detail ->
-                        val newItem = SaveItem(
-                            id = System.currentTimeMillis().toString(),
-                            title = title.ifBlank { "Photo" },
-                            subtitle = detail,
-                            imageUrl = if (detail.startsWith("http")) detail else null,
-                            category = ItemCategory.PHOTO,
-                            sourcePlatform = "Photos",
-                            dateAdded = "Just now"
-                        )
-                        onItemSaved(newItem)
-                        onDismiss()
-                    }
-                )
-            }
+                HubSheetMode.INPUT_URL -> {
+                    UrlSaveContent(
+                        isSaving = isSaving,
+                        onBack = { currentMode = HubSheetMode.HUB_MAIN },
+                        onSave = { title, url, source, description, imageUrl, videoUrl ->
+                            val newItem = SaveItem(
+                                id = UUID.randomUUID().toString(),
+                                title = title.ifBlank { url },
+                                subtitle = description,
+                                url = url,
+                                imageUrl = imageUrl,
+                                videoUrl = videoUrl,
+                                category = ItemCategory.URL,
+                                sourcePlatform = source,
+                                dateAdded = "Just now"
+                            )
+                            executeSave(newItem)
+                        }
+                    )
+                }
 
-            HubSheetMode.INPUT_COLLECTION -> {
-                GenericSaveContent(
-                    titleLabel = "Collection Name",
-                    detailLabel = "Description",
-                    categoryTitle = "New Collection",
-                    onBack = { currentMode = HubSheetMode.HUB_MAIN },
-                    onSave = { title, detail ->
-                        val newItem = SaveItem(
-                            id = System.currentTimeMillis().toString(),
-                            title = title.ifBlank { "Collection" },
-                            subtitle = detail,
-                            category = ItemCategory.COLLECTION,
-                            sourcePlatform = "Collections",
-                            dateAdded = "Just now"
-                        )
-                        onItemSaved(newItem)
-                        onDismiss()
-                    }
-                )
-            }
+                HubSheetMode.INPUT_NOTE -> {
+                    NoteSaveContent(
+                        isSaving = isSaving,
+                        onBack = { currentMode = HubSheetMode.HUB_MAIN },
+                        onSave = { title, note ->
+                            val newItem = SaveItem(
+                                id = UUID.randomUUID().toString(),
+                                title = title.ifBlank { "Untitled Note" },
+                                noteContent = note,
+                                category = ItemCategory.NOTE,
+                                sourcePlatform = "Notes",
+                                dateAdded = "Just now"
+                            )
+                            executeSave(newItem)
+                        }
+                    )
+                }
 
-            HubSheetMode.INPUT_REVIEW -> {
-                GenericSaveContent(
-                    titleLabel = "Item or Place",
-                    detailLabel = "Your Review / Feedback",
-                    categoryTitle = "Write Review",
-                    onBack = { currentMode = HubSheetMode.HUB_MAIN },
-                    onSave = { title, detail ->
-                        val newItem = SaveItem(
-                            id = System.currentTimeMillis().toString(),
-                            title = title.ifBlank { "Review" },
-                            subtitle = detail,
-                            category = ItemCategory.REVIEW,
-                            sourcePlatform = "Review",
-                            dateAdded = "Just now"
-                        )
-                        onItemSaved(newItem)
-                        onDismiss()
-                    }
-                )
-            }
+                HubSheetMode.INPUT_PHOTO -> {
+                    GenericSaveContent(
+                        titleLabel = "Photo Title",
+                        detailLabel = "Image URL or Caption",
+                        categoryTitle = "Save Photo",
+                        isSaving = isSaving,
+                        onBack = { currentMode = HubSheetMode.HUB_MAIN },
+                        onSave = { title, detail ->
+                            val newItem = SaveItem(
+                                id = UUID.randomUUID().toString(),
+                                title = title.ifBlank { "Photo" },
+                                subtitle = detail,
+                                imageUrl = if (detail.startsWith("http://") || detail.startsWith("https://")) detail else null,
+                                category = ItemCategory.PHOTO,
+                                sourcePlatform = "Photos",
+                                dateAdded = "Just now"
+                            )
+                            executeSave(newItem)
+                        }
+                    )
+                }
 
-            HubSheetMode.INPUT_PRODUCT -> {
-                GenericSaveContent(
-                    titleLabel = "Product Name",
-                    detailLabel = "Product Link or Price",
-                    categoryTitle = "Save Product",
-                    onBack = { currentMode = HubSheetMode.HUB_MAIN },
-                    onSave = { title, detail ->
-                        val newItem = SaveItem(
-                            id = System.currentTimeMillis().toString(),
-                            title = title.ifBlank { "Product" },
-                            url = detail,
-                            category = ItemCategory.PRODUCT,
-                            sourcePlatform = "Product",
-                            dateAdded = "Just now"
-                        )
-                        onItemSaved(newItem)
-                        onDismiss()
-                    }
-                )
-            }
+                HubSheetMode.INPUT_COLLECTION -> {
+                    GenericSaveContent(
+                        titleLabel = "Collection Name",
+                        detailLabel = "Description (Optional)",
+                        categoryTitle = "New Collection",
+                        isSaving = isSaving,
+                        onBack = { currentMode = HubSheetMode.HUB_MAIN },
+                        onSave = { title, detail ->
+                            scope.launch {
+                                isSaving = true
+                                saveError = null
+                                val colResult = SaveRepository.createCollection(title, detail)
+                                if (colResult.isSuccess) {
+                                    val col = colResult.getOrNull()!!
+                                    val newItem = SaveItem(
+                                        id = UUID.randomUUID().toString(),
+                                        title = col.name,
+                                        subtitle = col.description,
+                                        category = ItemCategory.COLLECTION,
+                                        sourcePlatform = "Collections",
+                                        collectionId = col.id,
+                                        dateAdded = "Just now"
+                                    )
+                                    executeSave(newItem)
+                                } else {
+                                    isSaving = false
+                                    saveError = colResult.exceptionOrNull()?.message ?: "Failed to create collection"
+                                }
+                            }
+                        }
+                    )
+                }
 
-            HubSheetMode.INPUT_MANUAL -> {
-                GenericSaveContent(
-                    titleLabel = "$manualCategoryName Title",
-                    detailLabel = "Link, Author or Notes",
-                    categoryTitle = "Add $manualCategoryName",
-                    onBack = { currentMode = HubSheetMode.HUB_MAIN },
-                    onSave = { title, detail ->
-                        val newItem = SaveItem(
-                            id = System.currentTimeMillis().toString(),
-                            title = title.ifBlank { manualCategoryName },
-                            subtitle = detail,
-                            category = manualCategoryType,
-                            sourcePlatform = manualCategoryName,
-                            dateAdded = "Just now"
-                        )
-                        onItemSaved(newItem)
-                        onDismiss()
-                    }
-                )
+                HubSheetMode.INPUT_REVIEW -> {
+                    GenericSaveContent(
+                        titleLabel = "Item or Place",
+                        detailLabel = "Your Review / Feedback",
+                        categoryTitle = "Write Review",
+                        isSaving = isSaving,
+                        onBack = { currentMode = HubSheetMode.HUB_MAIN },
+                        onSave = { title, detail ->
+                            val newItem = SaveItem(
+                                id = UUID.randomUUID().toString(),
+                                title = title.ifBlank { "Review" },
+                                subtitle = detail,
+                                category = ItemCategory.REVIEW,
+                                sourcePlatform = "Review",
+                                dateAdded = "Just now"
+                            )
+                            executeSave(newItem)
+                        }
+                    )
+                }
+
+                HubSheetMode.INPUT_PRODUCT -> {
+                    GenericSaveContent(
+                        titleLabel = "Product Name",
+                        detailLabel = "Product Link or Price",
+                        categoryTitle = "Save Product",
+                        isSaving = isSaving,
+                        onBack = { currentMode = HubSheetMode.HUB_MAIN },
+                        onSave = { title, detail ->
+                            val newItem = SaveItem(
+                                id = UUID.randomUUID().toString(),
+                                title = title.ifBlank { "Product" },
+                                url = detail,
+                                category = ItemCategory.PRODUCT,
+                                sourcePlatform = "Product",
+                                dateAdded = "Just now"
+                            )
+                            executeSave(newItem)
+                        }
+                    )
+                }
+
+                HubSheetMode.INPUT_LOCATION -> {
+                    LocationSaveContent(
+                        isSaving = isSaving,
+                        onBack = { currentMode = HubSheetMode.HUB_MAIN },
+                        onSave = { placeName, address ->
+                            val newItem = SaveItem(
+                                id = UUID.randomUUID().toString(),
+                                title = placeName.ifBlank { "Saved Location" },
+                                subtitle = address,
+                                noteContent = address,
+                                category = ItemCategory.PLACE,
+                                sourcePlatform = "Places",
+                                dateAdded = "Just now"
+                            )
+                            executeSave(newItem)
+                        }
+                    )
+                }
+
+                HubSheetMode.INPUT_MANUAL -> {
+                    GenericSaveContent(
+                        titleLabel = "$manualCategoryName Title",
+                        detailLabel = "Link, Author or Notes",
+                        categoryTitle = "Add $manualCategoryName",
+                        isSaving = isSaving,
+                        onBack = { currentMode = HubSheetMode.HUB_MAIN },
+                        onSave = { title, detail ->
+                            val newItem = SaveItem(
+                                id = UUID.randomUUID().toString(),
+                                title = title.ifBlank { manualCategoryName },
+                                subtitle = detail,
+                                category = manualCategoryType,
+                                sourcePlatform = manualCategoryName,
+                                dateAdded = "Just now"
+                            )
+                            executeSave(newItem)
+                        }
+                    )
+                }
             }
         }
     }
@@ -265,6 +390,7 @@ fun SaveHubMainContent(
     onSelectCollections: () -> Unit,
     onSelectReview: () -> Unit,
     onSelectProduct: () -> Unit,
+    onSelectLocation: () -> Unit,
     onSelectManualCategory: (String, ItemCategory) -> Unit
 ) {
     Column(
@@ -274,22 +400,22 @@ fun SaveHubMainContent(
             .padding(bottom = 36.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        // 2-Column Grid of 6 Action Boxes
+        // Grid of Action Boxes with Authentic 3D Category Assets
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(modifier = Modifier.weight(1f)) {
                 SaveActionBox(
-                    icon = Icons.Default.Link,
+                    drawableRes = R.drawable.ic_cat_link,
                     title = "Paste any URL",
-                    subtitle = "Articles, blogs, TikTok, Instagram & more",
+                    subtitle = "Articles, TikTok, Instagram & more",
                     onClick = onSelectUrl
                 )
             }
             Box(modifier = Modifier.weight(1f)) {
                 SaveActionBox(
-                    icon = Icons.Default.Description,
+                    drawableRes = R.drawable.ic_cat_note,
                     title = "Notes",
                     subtitle = "Thoughts, ideas & drafts",
                     onClick = onSelectNotes
@@ -305,7 +431,7 @@ fun SaveHubMainContent(
         ) {
             Box(modifier = Modifier.weight(1f)) {
                 SaveActionBox(
-                    icon = Icons.Default.CameraAlt,
+                    drawableRes = R.drawable.ic_cat_photos,
                     title = "Photos",
                     subtitle = "Images, screenshots & media",
                     onClick = onSelectPhotos
@@ -313,7 +439,7 @@ fun SaveHubMainContent(
             }
             Box(modifier = Modifier.weight(1f)) {
                 SaveActionBox(
-                    icon = Icons.Default.Bookmark,
+                    drawableRes = R.drawable.ic_cat_collection,
                     title = "Collections",
                     subtitle = "Folders & grouped items",
                     onClick = onSelectCollections
@@ -329,15 +455,15 @@ fun SaveHubMainContent(
         ) {
             Box(modifier = Modifier.weight(1f)) {
                 SaveActionBox(
-                    icon = Icons.Default.RateReview,
+                    drawableRes = R.drawable.ic_cat_review,
                     title = "Review",
-                    subtitle = "Ratings, thoughts & feedback",
+                    subtitle = "Ratings & feedback",
                     onClick = onSelectReview
                 )
             }
             Box(modifier = Modifier.weight(1f)) {
                 SaveActionBox(
-                    icon = Icons.Default.ShoppingBag,
+                    drawableRes = R.drawable.ic_cat_products,
                     title = "Product",
                     subtitle = "Items, links & shopping",
                     onClick = onSelectProduct
@@ -345,54 +471,60 @@ fun SaveHubMainContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Divider & Heading: OR MANUALLY SEARCH THESE
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            HorizontalDivider(modifier = Modifier.weight(1f), color = AppBorderGrey)
-            Text(
-                text = "OR MANUALLY SEARCH THESE",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = AppLightGrey,
-                letterSpacing = 1.sp,
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
-            HorizontalDivider(modifier = Modifier.weight(1f), color = AppBorderGrey)
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        val manualCategories = listOf(
-            Triple("Films", Icons.Default.Movie, ItemCategory.FILM),
-            Triple("Software", Icons.Default.Code, ItemCategory.SOFTWARE),
-            Triple("Products", Icons.Default.ShoppingBag, ItemCategory.PRODUCT),
-            Triple("TV Shows", Icons.Default.Tv, ItemCategory.TV_SHOW),
-            Triple("Tutorials", Icons.Default.School, ItemCategory.TUTORIAL)
-        )
-
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            manualCategories.forEach { (name, icon, cat) ->
-                ManualCategoryChip(
-                    name = name,
-                    icon = icon,
-                    onClick = { onSelectManualCategory(name, cat) }
+            Box(modifier = Modifier.weight(1f)) {
+                SaveActionBox(
+                    drawableRes = R.drawable.ic_cat_places,
+                    title = "Location",
+                    subtitle = "Places, pins & spots",
+                    onClick = onSelectLocation
                 )
             }
+            Spacer(modifier = Modifier.weight(1f))
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // Divider
+        HorizontalDivider(thickness = 0.5.dp, color = AppBorderGrey)
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Manual Categories
+        Text(
+            text = "Categories",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = AppLightGrey,
+            letterSpacing = 1.2.sp
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ManualCategoryChip("Films", ItemCategory.FILM) { onSelectManualCategory("Films", ItemCategory.FILM) }
+            ManualCategoryChip("TV Shows", ItemCategory.TV_SHOW) { onSelectManualCategory("TV Shows", ItemCategory.TV_SHOW) }
+            ManualCategoryChip("Music", ItemCategory.MUSIC) { onSelectManualCategory("Music", ItemCategory.MUSIC) }
+            ManualCategoryChip("Books", ItemCategory.BOOK) { onSelectManualCategory("Books", ItemCategory.BOOK) }
+            ManualCategoryChip("Recipes", ItemCategory.RECIPE) { onSelectManualCategory("Recipes", ItemCategory.RECIPE) }
+            ManualCategoryChip("Software", ItemCategory.SOFTWARE) { onSelectManualCategory("Software", ItemCategory.SOFTWARE) }
+            ManualCategoryChip("Tutorials", ItemCategory.TUTORIAL) { onSelectManualCategory("Tutorials", ItemCategory.TUTORIAL) }
         }
     }
 }
 
 @Composable
 fun SaveActionBox(
-    icon: ImageVector,
+    drawableRes: Int? = null,
+    icon: ImageVector? = null,
     title: String,
     subtitle: String,
     onClick: () -> Unit
@@ -407,19 +539,28 @@ fun SaveActionBox(
             .padding(14.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(AppBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = AppWhite,
-                modifier = Modifier.size(18.dp)
+        if (drawableRes != null) {
+            Image(
+                painter = painterResource(id = drawableRes),
+                contentDescription = title,
+                modifier = Modifier.size(38.dp),
+                contentScale = ContentScale.Fit
             )
+        } else if (icon != null) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(AppBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = AppWhite,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
 
         Column {
@@ -445,36 +586,45 @@ fun SaveActionBox(
 @Composable
 fun ManualCategoryChip(
     name: String,
-    icon: ImageVector,
+    category: ItemCategory,
     onClick: () -> Unit
 ) {
+    val theme = getCategoryTheme(category)
+    val catDrawable = getCategoryDrawableRes(category)
+    val isDark = com.mimo.app.ui.theme.ThemeManager.isDark
+
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(24.dp))
-            .background(AppWhite)
-            .border(1.dp, AppBorderGrey, RoundedCornerShape(24.dp))
+            .background(if (isDark) theme.containerDark else theme.containerLight)
+            .border(
+                1.dp,
+                theme.accentColor.copy(alpha = if (isDark) 0.40f else 0.25f),
+                RoundedCornerShape(24.dp)
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
+        Image(
+            painter = painterResource(id = catDrawable),
             contentDescription = null,
-            tint = AppBlack,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(20.dp),
+            contentScale = ContentScale.Fit
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = name,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = AppBlack
+            color = if (isDark) AppWhite else AppBlack
         )
     }
 }
 
 @Composable
 fun UrlSaveContent(
+    isSaving: Boolean,
     onBack: () -> Unit,
     onSave: (String, String, String, String, String?, String?) -> Unit
 ) {
@@ -496,7 +646,7 @@ fun UrlSaveContent(
             color = AppBlack
         )
         Text(
-            text = "Articles, blogs, TikTok, Instagram & more",
+            text = "Articles, TikTok, Instagram & more",
             fontSize = 13.sp,
             color = AppLightGrey
         )
@@ -526,8 +676,8 @@ fun UrlSaveContent(
                 .fillMaxWidth()
                 .height(52.dp)
                 .clip(RoundedCornerShape(50.dp))
-                .background(if (isFetching) AppLightGrey else AppBlack)
-                .clickable(enabled = !isFetching && urlInput.isNotBlank()) {
+                .background(if (isFetching || isSaving || urlInput.isBlank()) AppLightGrey else AppBlack)
+                .clickable(enabled = !isFetching && !isSaving && urlInput.isNotBlank()) {
                     isFetching = true
                     scope.launch {
                         try {
@@ -551,7 +701,7 @@ fun UrlSaveContent(
                 },
             contentAlignment = Alignment.Center
         ) {
-            if (isFetching) {
+            if (isFetching || isSaving) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
@@ -560,7 +710,7 @@ fun UrlSaveContent(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Saving...",
+                        text = if (isFetching) "Fetching..." else "Saving...",
                         color = AppWhite,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
@@ -580,6 +730,7 @@ fun UrlSaveContent(
 
 @Composable
 fun NoteSaveContent(
+    isSaving: Boolean,
     onBack: () -> Unit,
     onSave: (String, String) -> Unit
 ) {
@@ -620,10 +771,63 @@ fun NoteSaveContent(
         Spacer(modifier = Modifier.height(24.dp))
 
         PrimaryPillButton(
-            text = "Save Note",
+            text = if (isSaving) "Saving..." else "Save Note",
             onClick = {
                 if (noteTitle.isNotBlank() || noteBody.isNotBlank()) {
                     onSave(noteTitle, noteBody)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun LocationSaveContent(
+    isSaving: Boolean,
+    onBack: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    var placeName by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 36.dp)
+    ) {
+        Text(
+            text = "Save Location",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = AppBlack
+        )
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        AppInputField(
+            label = "Place Name",
+            value = placeName,
+            onValueChange = { placeName = it },
+            placeholder = "e.g. Favorite Cafe, Studio..."
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        AppInputField(
+            label = "Address or Notes",
+            value = address,
+            onValueChange = { address = it },
+            placeholder = "Enter street, city or coordinates..."
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        PrimaryPillButton(
+            text = if (isSaving) "Saving..." else "Save Location",
+            onClick = {
+                if (placeName.isNotBlank() || address.isNotBlank()) {
+                    onSave(placeName, address)
                 }
             }
         )
@@ -635,6 +839,7 @@ fun GenericSaveContent(
     titleLabel: String,
     detailLabel: String,
     categoryTitle: String,
+    isSaving: Boolean = false,
     onBack: () -> Unit,
     onSave: (String, String) -> Unit
 ) {
@@ -675,7 +880,7 @@ fun GenericSaveContent(
         Spacer(modifier = Modifier.height(24.dp))
 
         PrimaryPillButton(
-            text = "Save",
+            text = if (isSaving) "Saving..." else "Save",
             onClick = {
                 if (title.isNotBlank() || detail.isNotBlank()) {
                     onSave(title, detail)

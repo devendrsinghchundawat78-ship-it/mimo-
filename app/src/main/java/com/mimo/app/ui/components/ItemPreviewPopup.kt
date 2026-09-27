@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +23,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Favorite
@@ -64,6 +67,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ItemPreviewPopup(
     item: SaveItem?,
+    anchorOffset: Offset? = null,
     onDismiss: () -> Unit,
     onOpen: (SaveItem) -> Unit,
     onToggleFavorite: (SaveItem) -> Unit,
@@ -75,52 +79,33 @@ fun ItemPreviewPopup(
     val coroutineScope = rememberCoroutineScope()
     var isClosing by remember { mutableStateOf(false) }
 
-    // Authentic mobile OS home screen icon-to-window spring animation
-    // Starts from small icon size (0.28f scale) and smoothly expands with spring overshoot
-    val cardScale = remember { Animatable(0.28f) }
-    val cardAlpha = remember { Animatable(0f) }
-    val bgAlpha = remember { Animatable(0f) }
-    val actionsTranslationY = remember { Animatable(45f) }
+    // Unified animation progress: 0f = collapsed at origin folder, 1f = fully expanded in center
+    val animProgress = remember { Animatable(0f) }
     val actionsAlpha = remember { Animatable(0f) }
+    val actionsTranslationY = remember { Animatable(30f) }
 
     LaunchedEffect(item) {
         if (item != null) {
             launch {
-                bgAlpha.animateTo(
-                    targetValue = 0.65f,
-                    animationSpec = tween(durationMillis = 200)
-                )
-            }
-            launch {
-                cardAlpha.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(durationMillis = 150)
-                )
-            }
-            launch {
-                // Mobile OS icon-to-window expansion spring
-                cardScale.animateTo(
+                // Smooth physical expansion from the origin folder
+                animProgress.animateTo(
                     targetValue = 1f,
                     animationSpec = spring(
-                        dampingRatio = 0.68f, // physical spring bounce
-                        stiffness = 380f     // smooth medium stiffness
+                        dampingRatio = 0.78f,
+                        stiffness = 180f // Gentle, elegant fluid motion
                     )
                 )
             }
-            // Actions slide up smoothly right after the card expands
-            delay(50)
+            delay(120)
             launch {
-                actionsAlpha.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(durationMillis = 160)
-                )
+                actionsAlpha.animateTo(1f, tween(180))
             }
             launch {
                 actionsTranslationY.animateTo(
                     targetValue = 0f,
                     animationSpec = spring(
-                        dampingRatio = 0.75f,
-                        stiffness = 400f
+                        dampingRatio = 0.8f,
+                        stiffness = 220f
                     )
                 )
             }
@@ -131,17 +116,18 @@ fun ItemPreviewPopup(
         if (!isClosing) {
             isClosing = true
             coroutineScope.launch {
-                launch { bgAlpha.animateTo(0f, tween(160)) }
-                launch { cardAlpha.animateTo(0f, tween(140)) }
+                launch { actionsAlpha.animateTo(0f, tween(100)) }
+                launch { actionsTranslationY.animateTo(25f, tween(120)) }
                 launch {
-                    cardScale.animateTo(
-                        targetValue = 0.28f,
-                        animationSpec = spring(dampingRatio = 0.85f, stiffness = 500f)
+                    animProgress.animateTo(
+                        targetValue = 0f,
+                        animationSpec = spring(
+                            dampingRatio = 0.85f,
+                            stiffness = 240f
+                        )
                     )
                 }
-                launch { actionsAlpha.animateTo(0f, tween(100)) }
-                launch { actionsTranslationY.animateTo(35f, tween(140)) }
-                delay(160)
+                delay(180)
                 onDismiss()
             }
         }
@@ -152,11 +138,10 @@ fun ItemPreviewPopup(
         closeWithAnimation()
     }
 
-    // Full screen overlay with frosted blur effect
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = bgAlpha.value))
+            .background(Color.Black.copy(alpha = 0.65f * animProgress.value))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -164,14 +149,35 @@ fun ItemPreviewPopup(
             ),
         contentAlignment = Alignment.Center
     ) {
+        val density = LocalDensity.current
+        val screenWidthPx = with(density) { maxWidth.toPx() }
+        val screenHeightPx = with(density) { maxHeight.toPx() }
+
+        val startTranslationX = remember(anchorOffset, screenWidthPx) {
+            if (anchorOffset != null && anchorOffset.x > 0f) {
+                anchorOffset.x - (screenWidthPx / 2f)
+            } else 0f
+        }
+        val startTranslationY = remember(anchorOffset, screenHeightPx) {
+            if (anchorOffset != null && anchorOffset.y > 0f) {
+                anchorOffset.y - (screenHeightPx / 2f)
+            } else 0f
+        }
+
+        val currentScale = 0.35f + 0.65f * animProgress.value
+        val currentTransX = startTranslationX * (1f - animProgress.value)
+        val currentTransY = startTranslationY * (1f - animProgress.value)
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 28.dp)
                 .graphicsLayer {
-                    scaleX = cardScale.value
-                    scaleY = cardScale.value
-                    alpha = cardAlpha.value
+                    translationX = currentTransX
+                    translationY = currentTransY
+                    scaleX = currentScale
+                    scaleY = currentScale
+                    alpha = animProgress.value.coerceIn(0f, 1f)
                 },
             horizontalAlignment = Alignment.CenterHorizontally
         ) {

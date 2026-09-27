@@ -2,12 +2,13 @@ package com.mimo.app.ui.screens
 
 import android.content.Context
 import android.content.Intent
-import android.media.MediaPlayer
 import android.net.Uri
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.VideoView
 import androidx.activity.compose.BackHandler
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import com.mimo.app.ui.components.AppInputField
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -72,12 +73,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -107,13 +111,17 @@ fun DetailScreen(
     onSelectItem: (SaveItem) -> Unit,
     onToggleFavorite: (SaveItem) -> Unit,
     onDelete: (SaveItem) -> Unit,
-    onItemLongPress: (SaveItem) -> Unit = {}
+    onUpdateItem: (SaveItem) -> Unit = {},
+    onItemLongPress: (SaveItem, Offset) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val isDark = ThemeManager.isDark
 
     var showMenu by remember { mutableStateOf(false) }
     var isMuted by remember { mutableStateOf(true) }
+    var showEditNoteDialog by remember { mutableStateOf(false) }
+    var editTitle by remember(item) { mutableStateOf(item.title) }
+    var editContent by remember(item) { mutableStateOf(item.noteContent.orEmpty()) }
 
     // Intercept hardware back button
     BackHandler {
@@ -272,7 +280,7 @@ fun DetailScreen(
                             Text(
                                 text = item.sourcePlatform,
                                 fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = FontWeight.Normal,
                                 color = AppLightGrey
                             )
                         }
@@ -280,20 +288,22 @@ fun DetailScreen(
                         Text(
                             text = item.dateAdded,
                             fontSize = 12.sp,
+                            fontWeight = FontWeight.Normal,
                             color = AppLightGrey
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                    // Stylized Distinct Title (Serif Typography per instruction)
+                    // Sole Main Bold Title (Clean modern typography)
                     Text(
                         text = item.title,
-                        fontSize = 24.sp,
-                        fontFamily = FontFamily.Serif,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         color = AppBlack,
-                        lineHeight = 30.sp
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 28.sp
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -343,8 +353,8 @@ fun DetailScreen(
                     ) {
                         Text(
                             text = "More Saves",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
                             color = AppBlack
                         )
                         Spacer(modifier = Modifier.height(14.dp))
@@ -364,7 +374,7 @@ fun DetailScreen(
                                 RelatedSaveCard(
                                     item = other,
                                     onClick = { onSelectItem(other) },
-                                    onLongPress = { onItemLongPress(other) }
+                                    onLongPress = { cardOffset -> onItemLongPress(other, cardOffset) }
                                 )
                             }
                         }
@@ -433,6 +443,16 @@ fun DetailScreen(
                         onDismissRequest = { showMenu = false },
                         modifier = Modifier.background(AppCardBg)
                     ) {
+                        if (item.category == com.mimo.app.data.model.ItemCategory.NOTE || !item.noteContent.isNullOrBlank()) {
+                            DropdownMenuItem(
+                                text = { Text("Edit Note", color = AppBlack) },
+                                onClick = {
+                                    showMenu = false
+                                    showEditNoteDialog = true
+                                }
+                            )
+                        }
+
                         DropdownMenuItem(
                             text = {
                                 Text(
@@ -445,6 +465,20 @@ fun DetailScreen(
                                 showMenu = false
                             }
                         )
+
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = if (item.isArchived) "Unarchive Save" else "Archive Save",
+                                    color = AppBlack
+                                )
+                            },
+                            onClick = {
+                                onUpdateItem(item.copy(isArchived = !item.isArchived))
+                                showMenu = false
+                            }
+                        )
+
                         if (item.url.isNotBlank()) {
                             DropdownMenuItem(
                                 text = { Text("Open in Browser", color = AppBlack) },
@@ -456,6 +490,7 @@ fun DetailScreen(
                                 }
                             )
                         }
+
                         DropdownMenuItem(
                             text = { Text("Delete Save", color = AppAccentRed) },
                             onClick = {
@@ -468,10 +503,60 @@ fun DetailScreen(
                 }
             }
         }
+
+        // Note Edit Modal Dialog
+        if (showEditNoteDialog) {
+            AlertDialog(
+                onDismissRequest = { showEditNoteDialog = false },
+                containerColor = AppWhite,
+                title = {
+                    Text(
+                        text = "Edit Note",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AppBlack
+                    )
+                },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        AppInputField(
+                            label = "Title",
+                            value = editTitle,
+                            onValueChange = { editTitle = it },
+                            placeholder = "Note title..."
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        AppInputField(
+                            label = "Content",
+                            value = editContent,
+                            onValueChange = { editContent = it },
+                            placeholder = "Write your thoughts here..."
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val updated = item.copy(title = editTitle, noteContent = editContent)
+                            onUpdateItem(updated)
+                            showEditNoteDialog = false
+                        }
+                    ) {
+                        Text("Save", color = AppBlack, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEditNoteDialog = false }) {
+                        Text("Cancel", color = AppLightGrey)
+                    }
+                }
+            )
+        }
     }
 }
 
-// In-App Video Player Component with Auto-play and Muted Sound
+// In-App Video Player Component with Media3 ExoPlayer, Auto-play and Muted Sound
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun InAppVideoPlayer(
     videoUrl: String,
@@ -479,12 +564,28 @@ fun InAppVideoPlayer(
     modifier: Modifier = Modifier,
     onToggleSound: () -> Unit
 ) {
-    var mediaPlayerInstance by remember { mutableStateOf<MediaPlayer?>(null) }
+    val context = LocalContext.current
+    val exoPlayer = remember(videoUrl) {
+        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+            try {
+                val mediaItem = androidx.media3.common.MediaItem.fromUri(videoUrl)
+                setMediaItem(mediaItem)
+                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                volume = if (isMuted) 0f else 1f
+                prepare()
+                playWhenReady = true
+            } catch (_: Exception) {}
+        }
+    }
 
-    DisposableEffect(isMuted) {
-        val volume = if (isMuted) 0f else 1f
-        mediaPlayerInstance?.setVolume(volume, volume)
-        onDispose { }
+    LaunchedEffect(isMuted) {
+        exoPlayer.volume = if (isMuted) 0f else 1f
+    }
+
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            exoPlayer.release()
+        }
     }
 
     Box(
@@ -499,20 +600,13 @@ fun InAppVideoPlayer(
     ) {
         AndroidView(
             factory = { ctx ->
-                VideoView(ctx).apply {
+                androidx.media3.ui.PlayerView(ctx).apply {
+                    useController = false
+                    player = exoPlayer
                     layoutParams = FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
-                    setVideoURI(Uri.parse(videoUrl))
-                    setOnPreparedListener { mp ->
-                        mediaPlayerInstance = mp
-                        mp.isLooping = true
-                        val volume = if (isMuted) 0f else 1f
-                        mp.setVolume(volume, volume)
-                        mp.start()
-                    }
-                    setOnErrorListener { _, _, _ -> true }
                 }
             },
             modifier = Modifier.fillMaxSize()
@@ -597,7 +691,7 @@ fun LiquidGlassSourceChip(
         Text(
             text = platform,
             fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.Medium,
             color = if (isDark) Color(0xFFFFFFFF) else Color(0xFF111111)
         )
 
@@ -628,17 +722,22 @@ fun getPlatformIcon(platform: String): ImageVector {
 fun RelatedSaveCard(
     item: SaveItem,
     onClick: () -> Unit,
-    onLongPress: () -> Unit
+    onLongPress: (Offset) -> Unit
 ) {
+    var cardCenter by remember { mutableStateOf(Offset.Zero) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(AppCardBg)
             .border(1.dp, AppBorderGrey, RoundedCornerShape(16.dp))
+            .onGloballyPositioned { coordinates ->
+                cardCenter = coordinates.boundsInRoot().center
+            }
             .pointerInput(item.id) {
                 detectTapGestures(
-                    onLongPress = { onLongPress() },
+                    onLongPress = { onLongPress(cardCenter) },
                     onTap = { onClick() }
                 )
             }
@@ -683,7 +782,7 @@ fun RelatedSaveCard(
         Text(
             text = item.title,
             fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
             color = AppBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis

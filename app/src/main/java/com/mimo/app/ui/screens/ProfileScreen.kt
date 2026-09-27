@@ -51,10 +51,13 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import com.mimo.app.data.network.GoogleDriveService
+import kotlinx.coroutines.launch
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -99,13 +102,15 @@ import com.mimo.app.ui.theme.AppBorderGrey
 import com.mimo.app.ui.theme.AppInputBg
 import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
+import com.mimo.app.ui.theme.LiquidGlassManager
 import com.mimo.app.ui.theme.ThemeManager
+import com.mimo.app.ui.components.LiquidGlassSettingsSheet
 
 data class ProfileData(
-    val displayName: String = "Devendra Singh",
-    val username: String = "devendr_mimo",
-    val bio: String = "Curating visual thoughts, links & notes ✨\nExplorer & Creator",
-    val websiteUrl: String = "https://instagram.com/devendra",
+    val displayName: String = "",
+    val username: String = "",
+    val bio: String = "",
+    val websiteUrl: String = "",
     val avatarUrl: String? = null
 )
 
@@ -120,8 +125,17 @@ fun ProfileScreen(
 ) {
     val context = LocalContext.current
 
-    // Mutable profile state
-    var profile by remember { mutableStateOf(ProfileData()) }
+    // Mutable profile state wired to real Supabase session data
+    val sessionEmail = com.mimo.app.data.network.SupabaseSessionManager.currentUserEmail
+    val sessionName = com.mimo.app.data.network.SupabaseSessionManager.currentUserName
+    var profile by remember {
+        mutableStateOf(
+            ProfileData(
+                displayName = sessionName ?: sessionEmail?.substringBefore('@')?.replaceFirstChar { it.uppercase() } ?: "",
+                username = sessionEmail?.substringBefore('@') ?: ""
+            )
+        )
+    }
 
     // Bottom sheet states
     var showEditProfileSheet by remember { mutableStateOf(false) }
@@ -164,7 +178,7 @@ fun ProfileScreen(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = profile.username,
+                    text = profile.username.ifBlank { "Profile" },
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = AppBlack,
@@ -299,16 +313,20 @@ fun ProfileScreen(
                         .padding(horizontal = 20.dp, vertical = 6.dp)
                 ) {
                     // Display Name
-                    Text(
-                        text = profile.displayName,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = AppBlack
-                    )
+                    if (profile.displayName.isNotBlank()) {
+                        Text(
+                            text = profile.displayName,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = AppBlack
+                        )
+                    }
 
                     // Bio Text
                     if (profile.bio.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                        if (profile.displayName.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
                         Text(
                             text = profile.bio,
                             fontSize = 13.sp,
@@ -872,9 +890,12 @@ fun SettingsBottomSheet(
     onDismiss: () -> Unit,
     onSignOut: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var pushNotifications by remember { mutableStateOf(true) }
     var saveOffline by remember { mutableStateOf(false) }
+    var showLiquidGlassSettings by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -923,7 +944,8 @@ fun SettingsBottomSheet(
                 // Group 1: Account
                 item {
                     SettingsSection(title = "Account") {
-                        SettingsRow(label = "Personal Information")
+                        val sessionEmail = com.mimo.app.data.network.SupabaseSessionManager.currentUserEmail
+                        SettingsRow(label = "Email", value = sessionEmail ?: "Not signed in")
                         SettingsRow(label = "Security & Password")
                         SettingsRow(label = "Saved Archive")
                     }
@@ -956,6 +978,11 @@ fun SettingsBottomSheet(
                             )
                         }
                         SettingsRow(label = "Default View", value = "Grid")
+                        SettingsRow(
+                            label = "Liquid Glass Effect",
+                            value = if (LiquidGlassManager.isEnabled) "On" else "Off",
+                            onClick = { showLiquidGlassSettings = true }
+                        )
                         SettingsRow(label = "Language", value = "English")
                     }
                 }
@@ -992,6 +1019,112 @@ fun SettingsBottomSheet(
                 // Group 4: Storage & Data
                 item {
                     SettingsSection(title = "Storage & Data") {
+                        // Google Drive Integration
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Google Drive",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = AppBlack
+                                )
+                                if (GoogleDriveService.isConnected && !GoogleDriveService.connectedEmail.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = GoogleDriveService.connectedEmail.orEmpty(),
+                                        fontSize = 12.sp,
+                                        color = AppLightGrey
+                                    )
+                                } else if (!GoogleDriveService.errorMessage.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = GoogleDriveService.errorMessage.orEmpty(),
+                                        fontSize = 11.sp,
+                                        color = AppAccentRed
+                                    )
+                                }
+                            }
+
+                            if (GoogleDriveService.isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = AppBlack
+                                )
+                            } else if (GoogleDriveService.isConnected) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(AppWhite)
+                                            .border(1.dp, AppBorderGrey, RoundedCornerShape(8.dp))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = AppBlack,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Connected",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = AppBlack
+                                        )
+                                    }
+
+                                    Text(
+                                        text = "Disconnect",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = AppAccentRed,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable { GoogleDriveService.disconnect() }
+                                            .padding(horizontal = 4.dp, vertical = 4.dp)
+                                    )
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(AppBlack)
+                                        .clickable {
+                                            scope.launch {
+                                                GoogleDriveService.startConnectFlow(context)
+                                            }
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Connect",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AppWhite
+                                    )
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(
+                            thickness = 0.5.dp,
+                            color = AppBorderGrey,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1015,7 +1148,7 @@ fun SettingsBottomSheet(
                                 )
                             )
                         }
-                        SettingsRow(label = "Clear Cache", value = "42 MB")
+                        SettingsRow(label = "Clear Cache")
                     }
                 }
 
@@ -1049,6 +1182,12 @@ fun SettingsBottomSheet(
                 }
             }
         }
+    }
+
+    if (showLiquidGlassSettings) {
+        LiquidGlassSettingsSheet(
+            onDismiss = { showLiquidGlassSettings = false }
+        )
     }
 }
 

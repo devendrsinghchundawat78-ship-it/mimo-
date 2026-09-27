@@ -49,7 +49,9 @@ fun LoginScreen(
     onSignUpClick: () -> Unit,
     onForgotPasswordClick: () -> Unit,
     onGoogleSignInClick: () -> Unit = {},
-    onAppleSignInClick: () -> Unit = {}
+    onAppleSignInClick: () -> Unit = {},
+    isLoading: Boolean = false,
+    errorMessage: String? = null
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -133,12 +135,27 @@ fun LoginScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(26.dp))
+        if (!errorMessage.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = errorMessage,
+                color = AppAccentRed,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+        } else {
+            Spacer(modifier = Modifier.height(26.dp))
+        }
 
         // Sign In Button
         PrimaryPillButton(
             text = "Sign In",
-            onClick = { onSignInClick(email, password) }
+            onClick = { onSignInClick(email, password) },
+            isLoading = isLoading,
+            enabled = !isLoading
         )
 
         Spacer(modifier = Modifier.height(24.dp))

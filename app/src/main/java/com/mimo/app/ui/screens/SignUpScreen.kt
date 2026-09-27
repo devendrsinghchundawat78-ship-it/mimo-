@@ -48,7 +48,10 @@ fun SignUpScreen(
     onSignInClick: () -> Unit,
     onForgotPasswordClick: () -> Unit,
     onGoogleSignUpClick: () -> Unit = {},
-    onAppleSignUpClick: () -> Unit = {}
+    onAppleSignUpClick: () -> Unit = {},
+    isLoading: Boolean = false,
+    errorMessage: String? = null,
+    infoMessage: String? = null
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -144,12 +147,38 @@ fun SignUpScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        if (!errorMessage.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = errorMessage,
+                color = AppAccentRed,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+        } else if (!infoMessage.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = infoMessage,
+                color = AppBlack,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+        } else {
+            Spacer(modifier = Modifier.height(24.dp))
+        }
 
         // Sign Up Button
         PrimaryPillButton(
             text = "Sign Up",
-            onClick = { onSignUpClick(name, email, password) }
+            onClick = { onSignUpClick(name, email, password) },
+            isLoading = isLoading,
+            enabled = !isLoading
         )
 
         Spacer(modifier = Modifier.height(22.dp))

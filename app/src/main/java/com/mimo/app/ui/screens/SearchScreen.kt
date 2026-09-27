@@ -144,7 +144,8 @@ fun SearchScreen(
                 item.title.contains(searchQuery, ignoreCase = true) ||
                 item.subtitle.contains(searchQuery, ignoreCase = true) ||
                 item.url.contains(searchQuery, ignoreCase = true) ||
-                item.sourcePlatform.contains(searchQuery, ignoreCase = true)
+                item.sourcePlatform.contains(searchQuery, ignoreCase = true) ||
+                (item.noteContent?.contains(searchQuery, ignoreCase = true) == true)
             }
 
             val matchesCategory = if (selectedCategory == null) true else {

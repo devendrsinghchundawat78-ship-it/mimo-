@@ -19,6 +19,10 @@ data class ParsedMetadata(
 
 object LinkMetadataFetcher {
 
+    private const val UA_DESKTOP = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    private const val UA_WHATSAPP = "WhatsApp/2.23.23.78 i"
+    private const val UA_FACEBOOK_EXTERNAL_HIT = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -57,6 +61,70 @@ object LinkMetadataFetcher {
                         imageUrl = thumb,
                         platform = platform,
                         canonicalUrl = cleanUrl
+                    )
+                }
+            }
+        }
+
+        // Instagram Reels & Posts optimization
+        if (platform == "Instagram") {
+            val shortcode = extractInstagramShortcode(cleanUrl)
+            if (shortcode != null) {
+                val canonical = "https://www.instagram.com/reel/$shortcode/"
+                try {
+                    // Strategy 1: Embed endpoint (public, fast, returns EmbeddedMediaImage and og:image)
+                    val embedUrl = "https://www.instagram.com/p/$shortcode/embed/captioned/"
+                    val embedHtml = fetchHtmlWithUA(embedUrl, UA_DESKTOP)
+                    var image = extractInstagramThumbnail(embedHtml)
+                    var title = extractInstagramTitle(embedHtml) ?: extractTag(embedHtml, "og:title")
+                    var desc = extractTag(embedHtml, "og:description") ?: ""
+
+                    // Strategy 2: Direct reel with WhatsApp preview bot user agent (Meta whitelisted)
+                    if (image.isNullOrBlank()) {
+                        val directHtml = fetchHtmlWithUA(canonical, UA_WHATSAPP)
+                        val directImg = extractInstagramThumbnail(directHtml)
+                        if (!directImg.isNullOrBlank()) {
+                            image = directImg
+                        }
+                        if (title.isNullOrBlank()) {
+                            title = extractInstagramTitle(directHtml) ?: extractTag(directHtml, "og:title")
+                        }
+                        if (desc.isBlank()) {
+                            desc = extractTag(directHtml, "og:description") ?: ""
+                        }
+                    }
+
+                    // Strategy 3: Facebook crawler user agent
+                    if (image.isNullOrBlank()) {
+                        val fbHtml = fetchHtmlWithUA("https://www.instagram.com/p/$shortcode/", UA_FACEBOOK_EXTERNAL_HIT)
+                        val fbImg = extractInstagramThumbnail(fbHtml)
+                        if (!fbImg.isNullOrBlank()) {
+                            image = fbImg
+                        }
+                        if (title.isNullOrBlank()) {
+                            title = extractInstagramTitle(fbHtml) ?: extractTag(fbHtml, "og:title")
+                        }
+                    }
+
+                    val finalTitle = title?.let { cleanInstagramTitle(it) } ?: "Instagram Reel"
+                    val finalDesc = if (desc.isNotBlank()) desc else "Instagram Reel • $shortcode"
+                    val fallbackImg = if (!image.isNullOrBlank()) image else "https://www.instagram.com/p/$shortcode/media/?size=l"
+
+                    return@withContext ParsedMetadata(
+                        title = unescape(finalTitle),
+                        description = unescape(finalDesc),
+                        imageUrl = fallbackImg,
+                        videoUrl = null,
+                        platform = "Instagram",
+                        canonicalUrl = canonical
+                    )
+                } catch (_: Exception) {
+                    return@withContext ParsedMetadata(
+                        title = "Instagram Reel",
+                        description = cleanUrl,
+                        imageUrl = "https://www.instagram.com/p/$shortcode/media/?size=l",
+                        platform = "Instagram",
+                        canonicalUrl = canonical
                     )
                 }
             }
@@ -120,22 +188,137 @@ object LinkMetadataFetcher {
 
     private fun fetchHtml(url: String, platform: String): String {
         val userAgent = if (platform == "Instagram" || platform == "TikTok" || platform == "Facebook") {
-            "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"
+            UA_FACEBOOK_EXTERNAL_HIT
         } else {
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            UA_DESKTOP
         }
+        return fetchHtmlWithUA(url, userAgent)
+    }
 
+    private fun fetchHtmlWithUA(url: String, userAgent: String): String {
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", userAgent)
-            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
             .header("Accept-Language", "en-US,en;q=0.9")
             .build()
 
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return ""
-            return response.body?.string() ?: ""
+        return try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) "" else response.body?.string() ?: ""
+            }
+        } catch (_: Exception) {
+            ""
         }
+    }
+
+    private fun extractInstagramShortcode(url: String): String? {
+        val pattern = Pattern.compile("/(?:reel|reels|p|tv|share/reel)/([A-Za-z0-9_-]+)")
+        val matcher = pattern.matcher(url)
+        return if (matcher.find()) matcher.group(1) else null
+    }
+
+    private fun extractInstagramThumbnail(html: String): String? {
+        if (html.isBlank()) return null
+
+        // 1. Meta og:image or twitter:image
+        val ogImage = extractTag(html, "og:image")
+            ?: extractTag(html, "og:image:secure_url")
+            ?: extractTag(html, "twitter:image")
+        if (!ogImage.isNullOrBlank()) {
+            val unescaped = unescapeUrl(ogImage)
+            if (isValidMediaUrl(unescaped)) return unescaped
+        }
+
+        // 2. EmbeddedMediaImage tag
+        val imgClassPattern = Pattern.compile("<img[^>]+class=[\"'][^\"']*EmbeddedMediaImage[^\"']*[\"'][^>]+src=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE)
+        val m1 = imgClassPattern.matcher(html)
+        if (m1.find()) {
+            val raw = m1.group(1)
+            if (!raw.isNullOrBlank()) {
+                val u = unescapeUrl(raw)
+                if (isValidMediaUrl(u)) return u
+            }
+        }
+
+        val imgClassPatternRev = Pattern.compile("<img[^>]+src=[\"']([^\"']+)[\"'][^>]+class=[\"'][^\"']*EmbeddedMediaImage[^\"']*[\"']", Pattern.CASE_INSENSITIVE)
+        val m2 = imgClassPatternRev.matcher(html)
+        if (m2.find()) {
+            val raw = m2.group(1)
+            if (!raw.isNullOrBlank()) {
+                val u = unescapeUrl(raw)
+                if (isValidMediaUrl(u)) return u
+            }
+        }
+
+        // 3. JSON fields: "display_url", "thumbnail_src", "thumbnail_url"
+        val jsonPattern = Pattern.compile("\"(?:display_url|thumbnail_src|thumbnail_url)\"\\s*:\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE)
+        val m3 = jsonPattern.matcher(html)
+        if (m3.find()) {
+            val raw = m3.group(1)
+            if (!raw.isNullOrBlank()) {
+                val u = unescapeUrl(raw)
+                if (isValidMediaUrl(u)) return u
+            }
+        }
+
+        // 4. Any CDN image in scontent or cdninstagram
+        val cdnPattern = Pattern.compile("(https?:[/\\\\]+[^\"'\\s<>()]+(?:scontent|cdninstagram)[^\"'\\s<>()]+\\.(?:jpg|jpeg|webp|png)[^\"'\\s<>()]*)", Pattern.CASE_INSENSITIVE)
+        val m4 = cdnPattern.matcher(html)
+        while (m4.find()) {
+            val raw = m4.group(1)
+            if (!raw.isNullOrBlank()) {
+                val u = unescapeUrl(raw)
+                if (isValidMediaUrl(u)) return u
+            }
+        }
+
+        return null
+    }
+
+    private fun extractInstagramTitle(html: String): String? {
+        val og = extractTag(html, "og:title")
+        if (!og.isNullOrBlank()) return og
+        val captionPattern = Pattern.compile("<div[^>]+class=[\"'][^\"']*Caption[^\"']*[\"'][^>]*>(.*?)</div>", Pattern.CASE_INSENSITIVE or Pattern.DOTALL)
+        val m = captionPattern.matcher(html)
+        if (m.find()) {
+            val group = m.group(1)
+            if (!group.isNullOrBlank()) {
+                val text = group.replace(Regex("<[^>]*>"), " ").trim()
+                if (text.isNotBlank()) return text
+            }
+        }
+        return extractTitleTag(html)
+    }
+
+    private fun cleanInstagramTitle(title: String): String {
+        var clean = title.trim()
+        val regex = Pattern.compile("^(?:.*?on Instagram:\\s*[\"']?)(.+?)[\"']?$", Pattern.CASE_INSENSITIVE)
+        val m = regex.matcher(clean)
+        if (m.find()) {
+            val group = m.group(1)
+            if (!group.isNullOrBlank()) {
+                clean = group.trim()
+            }
+        }
+        return clean.ifBlank { "Instagram Reel" }
+    }
+
+    private fun isValidMediaUrl(url: String): Boolean {
+        if (url.isBlank()) return false
+        if (url.startsWith("data:")) return false
+        if (url.contains("rsrc.php")) return false
+        if (url.contains("static.cdninstagram.com")) return false
+        return url.startsWith("http://") || url.startsWith("https://")
+    }
+
+    private fun unescapeUrl(url: String): String {
+        return url
+            .replace("\\/", "/")
+            .replace("\\u0026", "&")
+            .replace("&amp;", "&")
+            .replace("&#038;", "&")
+            .trim()
     }
 
     private fun detectPlatform(url: String): String {
