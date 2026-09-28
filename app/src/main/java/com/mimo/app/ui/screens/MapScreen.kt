@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.mimo.app.data.model.SaveItem
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
