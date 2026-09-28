@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -63,8 +64,10 @@ class MainActivity : ComponentActivity() {
 
         intent?.data?.let { uri ->
             GoogleDriveService.handleAuthCallback(uri)
-            if (SupabaseAuthService.handleAuthCallback(uri)) {
-                AppPreferences.setHasSeenWelcome(true)
+            lifecycleScope.launch {
+                if (SupabaseAuthService.handleAuthCallback(uri)) {
+                    AppPreferences.setHasSeenWelcome(true)
+                }
             }
         }
 
@@ -86,8 +89,10 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         intent.data?.let { uri ->
             GoogleDriveService.handleAuthCallback(uri)
-            if (SupabaseAuthService.handleAuthCallback(uri)) {
-                AppPreferences.setHasSeenWelcome(true)
+            lifecycleScope.launch {
+                if (SupabaseAuthService.handleAuthCallback(uri)) {
+                    AppPreferences.setHasSeenWelcome(true)
+                }
             }
         }
     }
