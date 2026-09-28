@@ -258,6 +258,14 @@ fun HomeScreen(
                     )
                 }
                 else -> {
+                    if (selectedCategory == ItemCategory.PHOTO) {
+                        PhotoGalleryScreen(
+                            savedItems = savedItems,
+                            onBack = { selectedCategory = null },
+                            onOpen = { selectedDetailItem = it },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
                     // HOME SCREEN CONTENT
                     Column(
                         modifier = Modifier
@@ -670,6 +678,7 @@ fun HomeScreen(
                         }
                     }
                 }
+                    }
             }
         }
 
