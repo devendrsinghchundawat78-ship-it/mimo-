@@ -178,6 +178,16 @@ fun HomeScreen(
     // State for Detail Screen (in-app photo/video streaming)
     var selectedDetailItem by remember { mutableStateOf<SaveItem?>(null) }
 
+    fun openSavedItem(item: SaveItem) {
+        val directUrl = if (item.url.startsWith("http://") || item.url.startsWith("https://")) item.url else "https://${item.url}"
+        val host = runCatching { java.net.URI(directUrl).host?.lowercase() }.getOrNull()
+        if (host in setOf("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be")) {
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(directUrl))) }
+        } else {
+            selectedDetailItem = item
+        }
+    }
+
     val scope = rememberCoroutineScope()
     val savedItems = com.mimo.app.data.repository.SaveRepository.saves
     val collections = com.mimo.app.data.repository.SaveRepository.collections
@@ -243,7 +253,7 @@ fun HomeScreen(
                     SearchScreen(
                         savedItems = savedItems,
                         onItemLongPress = { previewItem = it },
-                        onItemClick = { selectedDetailItem = it },
+                        onItemClick = { openSavedItem(it) },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -252,7 +262,7 @@ fun HomeScreen(
                     ProfileScreen(
                         savedItems = savedItems,
                         onItemLongPress = { previewItem = it },
-                        onItemClick = { selectedDetailItem = it },
+                        onItemClick = { openSavedItem(it) },
                         onSignOut = onSignOut,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -418,9 +428,7 @@ fun HomeScreen(
                                                     previewItem = item
                                                     previewAnchor = offset
                                                 },
-                                                onClick = {
-                                                    selectedDetailItem = item
-                                                }
+                                                onClick = { openSavedItem(item) }
                                             )
                                         }
                                     }
@@ -630,9 +638,7 @@ fun HomeScreen(
                                             previewItem = item
                                             previewAnchor = offset
                                         },
-                                        onClick = {
-                                            selectedDetailItem = item
-                                        }
+                                        onClick = { openSavedItem(item) }
                                     )
                                     Spacer(modifier = Modifier.height(10.dp))
                                 }
@@ -654,9 +660,7 @@ fun HomeScreen(
                                                         previewItem = item
                                                         previewAnchor = offset
                                                     },
-                                                    onClick = {
-                                                        selectedDetailItem = item
-                                                    }
+                                                    onClick = { openSavedItem(item) }
                                                 )
                                             }
                                         }
@@ -716,7 +720,7 @@ fun HomeScreen(
                     previewAnchor = null
                 },
                 onOpen = { item ->
-                    selectedDetailItem = item
+                    openSavedItem(item)
                     previewItem = null
                     previewAnchor = null
                 },
@@ -772,7 +776,7 @@ fun HomeScreen(
                     allSavedItems = savedItems,
                     onBack = { selectedDetailItem = null },
                     onSelectItem = { nextItem ->
-                        selectedDetailItem = nextItem
+                        openSavedItem(nextItem)
                     },
                     onToggleFavorite = { itemToFav ->
                         scope.launch {

@@ -58,6 +58,7 @@ import com.mimo.app.R
 import com.mimo.app.data.model.ItemCategory
 import com.mimo.app.data.model.SaveItem
 import com.mimo.app.data.network.LinkMetadataFetcher
+import com.mimo.app.data.network.MimoServerPreview
 import com.mimo.app.data.network.SupabaseSessionManager
 import com.mimo.app.data.repository.SaveRepository
 import com.mimo.app.ui.theme.AppAccentRed
@@ -681,7 +682,13 @@ fun UrlSaveContent(
                     isFetching = true
                     scope.launch {
                         try {
-                            val metadata = LinkMetadataFetcher.fetch(urlInput.trim())
+                            val rawUrl = urlInput.trim()
+                            val url = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) rawUrl else "https://$rawUrl"
+                            val host = runCatching { java.net.URI(url).host?.lowercase() }.getOrNull()
+                            val metadata = if (host in setOf("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be")) {
+                                // YouTube saves keep the original link. Do not fetch its metadata or stream URL.
+                                com.mimo.app.data.network.ParsedMetadata("YouTube", "", null, platform = "YouTube", canonicalUrl = url)
+                            } else MimoServerPreview.fetch(url) ?: LinkMetadataFetcher.fetch(url)
                             val finalTitle = titleInput.ifBlank { metadata.title }
                             onSave(
                                 finalTitle,
