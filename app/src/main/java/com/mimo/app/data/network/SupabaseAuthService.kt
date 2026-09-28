@@ -313,41 +313,68 @@ object SupabaseAuthService {
     }
 
     /**
-     * Handles Supabase OAuth redirect deep-links:
-     * mimo://auth-callback#access_token=...&refresh_token=...
+     * Handles the implicit-flow redirect. Do not treat a token in a deep link as a
+     * signed-in user until Supabase Auth has verified it and returned that user.
      */
-    fun handleAuthCallback(uri: Uri?): Boolean {
-        if (uri == null) return false
-        val scheme = uri.scheme
-        val host = uri.host
+    suspend fun handleAuthCallback(uri: Uri?): Boolean = withContext(Dispatchers.IO) {
+        if (uri?.scheme != "mimo" || uri.host != "auth-callback") return@withContext false
 
-        if (scheme == "mimo" && host == "auth-callback") {
-            val fragment = uri.fragment
-            val params = if (!fragment.isNullOrBlank()) {
-                fragment.split("&").associate {
-                    val parts = it.split("=")
-                    if (parts.size >= 2) parts[0] to parts[1] else parts[0] to ""
-                }
-            } else {
-                emptyMap()
+        val params = uri.fragment?.split("&")?.mapNotNull { part ->
+            val pair = part.split("=", limit = 2)
+            if (pair.size == 2) {
+                Uri.decode(pair[0]) to Uri.decode(pair[1])
+            } else null
+        }?.toMap().orEmpty()
+        val accessToken = params["access_token"] ?: uri.getQueryParameter("access_token")
+        val refreshToken = params["refresh_token"] ?: uri.getQueryParameter("refresh_token")
+        val expiresIn = params["expires_in"]?.toLongOrNull()?.coerceIn(1L, 86400L) ?: 3600L
+        val anonKey = SupabaseConfig.getAnonKey()
+
+        if (accessToken.isNullOrBlank() || anonKey.isBlank()) {
+            withContext(Dispatchers.Main) { errorMessage = "Google sign-in did not finish. Please try again." }
+            return@withContext false
+        }
+
+        try {
+            val request = Request.Builder()
+                .url("${SupabaseConfig.AUTH_URL}/user")
+                .header("apikey", anonKey)
+                .header("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val body = response.use { it.body?.string().orEmpty() }
+            if (!response.isSuccessful) throw IllegalStateException("Supabase rejected the session")
+
+            val user = JSONObject(body)
+            val userId = user.optString("id")
+            val email = user.optString("email")
+            if (runCatching { java.util.UUID.fromString(userId) }.isFailure || email.isBlank()) {
+                throw IllegalStateException("Invalid Supabase user")
             }
+            val metadata = user.optJSONObject("user_metadata")
+            val name = metadata?.optString("full_name")?.ifBlank { null }
+                ?: metadata?.optString("name")?.ifBlank { null }
 
-            val accessToken = params["access_token"] ?: uri.getQueryParameter("access_token")
-            val refreshToken = params["refresh_token"] ?: uri.getQueryParameter("refresh_token")
-            val expiresIn = params["expires_in"]?.toLongOrNull() ?: 3600L
-
-            if (!accessToken.isNullOrBlank()) {
+            withContext(Dispatchers.Main) {
                 SupabaseSessionManager.setSession(
                     accessToken = accessToken,
                     refreshToken = refreshToken,
+                    userId = userId,
+                    email = email,
+                    name = name,
                     expiresInSeconds = expiresIn
                 )
                 errorMessage = null
                 isLoading = false
-                return true
             }
+            true
+        } catch (_: Exception) {
+            withContext(Dispatchers.Main) {
+                errorMessage = "Could not verify your Google sign-in. Please try again."
+                isLoading = false
+            }
+            false
         }
-        return false
     }
 }
-
