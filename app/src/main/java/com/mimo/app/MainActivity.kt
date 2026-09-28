@@ -41,6 +41,7 @@ import com.mimo.app.ui.screens.SignUpScreen
 import com.mimo.app.ui.screens.WelcomeScreen
 import com.mimo.app.ui.theme.AppWhite
 import com.mimo.app.ui.theme.MimoTheme
+import com.mimo.app.ui.theme.ThemeManager
 import kotlinx.coroutines.launch
 
 enum class Screen {
@@ -58,6 +59,7 @@ class MainActivity : ComponentActivity() {
 
         // Initialize app preferences, Supabase Auth, Google Drive service, and SaveRepository
         AppPreferences.initialize(applicationContext)
+        ThemeManager.isDark = AppPreferences.isDarkTheme()
         SupabaseAuthService.initialize(applicationContext)
         GoogleDriveService.initialize(applicationContext)
         com.mimo.app.data.repository.SaveRepository.initialize(applicationContext)

@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.sp
 
 // Global Theme Manager for Dark Mode / Light Mode toggle
 object ThemeManager {
-    var isDark by mutableStateOf(false)
+    var isDark by mutableStateOf(true)
 }
 
 // Adaptive Theme Colors - Automatically update on theme toggle

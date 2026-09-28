@@ -104,6 +104,7 @@ import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
 import com.mimo.app.ui.theme.LiquidGlassManager
 import com.mimo.app.ui.theme.ThemeManager
+import com.mimo.app.data.local.AppPreferences
 import com.mimo.app.ui.components.LiquidGlassSettingsSheet
 
 data class ProfileData(
@@ -968,7 +969,7 @@ fun SettingsBottomSheet(
                             )
                             Switch(
                                 checked = ThemeManager.isDark,
-                                onCheckedChange = { ThemeManager.isDark = it },
+                                onCheckedChange = { ThemeManager.isDark = it; AppPreferences.setDarkTheme(it) },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = AppWhite,
                                     checkedTrackColor = AppBlack,
