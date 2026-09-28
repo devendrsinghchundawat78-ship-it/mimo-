@@ -839,11 +839,10 @@ fun RecentSaveCarouselCard(
 
     Column(
         modifier = Modifier
-            .width(168.dp)
-            .height(225.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .width(150.dp)
+            .height(207.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(AppCardBg)
-            .border(1.dp, AppBorderGrey, RoundedCornerShape(20.dp))
             .onGloballyPositioned { coordinates ->
                 val pos = coordinates.boundsInRoot()
                 cardCenter = pos.center
@@ -861,7 +860,7 @@ fun RecentSaveCarouselCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(145.dp)
+                .height(151.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(if (isDark) catTheme.containerDark else catTheme.containerLight),
             contentAlignment = Alignment.Center
@@ -871,7 +870,9 @@ fun RecentSaveCarouselCard(
                     model = item.imageUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    error = painterResource(getCategoryDrawableRes(item.category)),
+                    fallback = painterResource(getCategoryDrawableRes(item.category))
                 )
 
                 // Subtle dark vignette at bottom of image for badge legibility
@@ -1285,6 +1286,8 @@ fun LiquidGlassBottomBar(
     val isGlassEnabled = LiquidGlassManager.isEnabled
     val surfaceOpacity = LiquidGlassManager.surfaceOpacity
     val specular = LiquidGlassManager.specularHighlight
+    val vibrancy = LiquidGlassManager.vibrancy
+    val blurRadius = LiquidGlassManager.blurRadiusDp
     val density = LocalDensity.current
 
     // Glass Background Gradient
@@ -1314,8 +1317,8 @@ fun LiquidGlassBottomBar(
         if (isDark) {
             Brush.verticalGradient(
                 listOf(
-                    Color(0x66FFFFFF),
-                    Color(0x20FFFFFF),
+                    Color.White.copy(alpha = (0.22f * vibrancy).coerceAtMost(0.70f)),
+                    Color.White.copy(alpha = (0.10f * vibrancy).coerceAtMost(0.40f)),
                     Color(0x10FFFFFF)
                 )
             )
@@ -1349,9 +1352,9 @@ fun LiquidGlassBottomBar(
             .width(animatedCapsuleWidth)
             .height(60.dp)
             .shadow(
-                elevation = 16.dp,
+                elevation = (8f + blurRadius).dp,
                 shape = RoundedCornerShape(percent = 50),
-                ambientColor = if (isDark) Color(0x66000000) else Color(0x1F000000),
+                ambientColor = if (isDark) Color.Black.copy(alpha = (0.15f + blurRadius / 75f).coerceAtMost(0.60f)) else Color(0x1F000000),
                 spotColor = if (isDark) Color(0x80000000) else Color(0x26000000)
             )
             .clip(RoundedCornerShape(percent = 50))
@@ -1423,11 +1426,10 @@ fun LiquidGlassBottomBar(
                             .size(38.dp)
                             .clip(CircleShape)
                             .background(
-                                if (isDark) Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFDDDDDD)))
+                                if (isDark) Brush.verticalGradient(listOf(Color(0xFF33343A), Color(0xFF202126)))
                                 else Brush.verticalGradient(listOf(Color(0xFF222222), Color(0xFF000000)))
                             )
-                            .border(1.dp, if (isDark) Color(0x66FFFFFF) else Color(0x33FFFFFF), CircleShape)
-                            .shadow(3.dp, CircleShape)
+                            .border(1.dp, if (isDark) Color(0x55FFFFFF) else Color(0x33FFFFFF), CircleShape)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
@@ -1438,7 +1440,7 @@ fun LiquidGlassBottomBar(
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = "Add Save",
-                            tint = if (isDark) Color(0xFF121212) else Color(0xFFFFFFFF),
+                            tint = Color.White,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -1515,7 +1517,7 @@ fun LiquidGlassBottomBar(
                                         .background(
                                             if (isDark) {
                                                 Brush.verticalGradient(
-                                                    listOf(Color(0xFFFFFFFF), Color(0xFFDDDDDD))
+                                                    listOf(Color(0xFF33343A), Color(0xFF202126))
                                                 )
                                             } else {
                                                 Brush.verticalGradient(
@@ -1525,10 +1527,9 @@ fun LiquidGlassBottomBar(
                                         )
                                         .border(
                                             1.dp,
-                                            if (isDark) Color(0x66FFFFFF) else Color(0x33FFFFFF),
+                                            if (isDark) Color(0x55FFFFFF) else Color(0x33FFFFFF),
                                             CircleShape
                                         )
-                                        .shadow(4.dp, CircleShape)
                                         .clickable(
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,
@@ -1539,7 +1540,7 @@ fun LiquidGlassBottomBar(
                                     Icon(
                                         imageVector = Icons.Default.Add,
                                         contentDescription = "Add Save",
-                                        tint = if (isDark) Color(0xFF121212) else Color(0xFFFFFFFF),
+                                        tint = Color.White,
                                         modifier = Modifier.size(22.dp)
                                     )
                                 }

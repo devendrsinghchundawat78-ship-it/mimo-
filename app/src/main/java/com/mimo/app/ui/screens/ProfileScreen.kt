@@ -102,10 +102,8 @@ import com.mimo.app.ui.theme.AppBorderGrey
 import com.mimo.app.ui.theme.AppInputBg
 import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
-import com.mimo.app.ui.theme.LiquidGlassManager
 import com.mimo.app.ui.theme.ThemeManager
 import com.mimo.app.data.local.AppPreferences
-import com.mimo.app.ui.components.LiquidGlassSettingsSheet
 
 data class ProfileData(
     val displayName: String = "",
@@ -896,7 +894,6 @@ fun SettingsBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var pushNotifications by remember { mutableStateOf(true) }
     var saveOffline by remember { mutableStateOf(false) }
-    var showLiquidGlassSettings by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -979,11 +976,8 @@ fun SettingsBottomSheet(
                             )
                         }
                         SettingsRow(label = "Default View", value = "Grid")
-                        SettingsRow(
-                            label = "Liquid Glass Effect",
-                            value = if (LiquidGlassManager.isEnabled) "On" else "Off",
-                            onClick = { showLiquidGlassSettings = true }
-                        )
+                        // Advanced Liquid Glass sheet removed: its blur/vibrancy controls did not
+                        // affect actual content. Navigation keeps its tested dark capsule style.
                         SettingsRow(label = "Language", value = "English")
                     }
                 }
@@ -1185,11 +1179,6 @@ fun SettingsBottomSheet(
         }
     }
 
-    if (showLiquidGlassSettings) {
-        LiquidGlassSettingsSheet(
-            onDismiss = { showLiquidGlassSettings = false }
-        )
-    }
 }
 
 // Section wrapper for settings groups

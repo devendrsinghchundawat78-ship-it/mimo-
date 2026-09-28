@@ -108,7 +108,9 @@ object LinkMetadataFetcher {
 
                     val finalTitle = title?.let { cleanInstagramTitle(it) } ?: "Instagram Reel"
                     val finalDesc = if (desc.isNotBlank()) desc else "Instagram Reel • $shortcode"
-                    val fallbackImg = if (!image.isNullOrBlank()) image else "https://www.instagram.com/p/$shortcode/media/?size=l"
+                    // Instagram often denies anonymous image fetches. Do not save a guessed
+                    // media URL as a thumbnail: a broken URL creates blank cards in the library.
+                    val fallbackImg = image?.takeIf { it.startsWith("https://") }
 
                     return@withContext ParsedMetadata(
                         title = unescape(finalTitle),
@@ -122,7 +124,7 @@ object LinkMetadataFetcher {
                     return@withContext ParsedMetadata(
                         title = "Instagram Reel",
                         description = cleanUrl,
-                        imageUrl = "https://www.instagram.com/p/$shortcode/media/?size=l",
+                        imageUrl = null,
                         platform = "Instagram",
                         canonicalUrl = canonical
                     )
