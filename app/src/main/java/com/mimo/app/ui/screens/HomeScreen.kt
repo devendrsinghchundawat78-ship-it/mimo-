@@ -83,6 +83,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -103,7 +105,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.mimo.app.data.model.ItemCategory
 import com.mimo.app.data.model.SaveItem
-import com.mimo.app.ui.components.AlboCategoryDock
+import com.mimo.app.data.model.UserCollection
 import com.mimo.app.ui.components.AppLogo
 import com.mimo.app.ui.components.CardFloatingPill
 import com.mimo.app.ui.components.CategoryBadgeIcon
@@ -111,6 +113,7 @@ import com.mimo.app.ui.components.ItemPreviewPopup
 import com.mimo.app.ui.components.PlatformBadgeIcon
 import com.mimo.app.ui.components.SaveHubBottomSheet
 import com.mimo.app.ui.components.getCategoryIcon
+import com.mimo.app.ui.components.getCategoryDrawableRes
 import com.mimo.app.ui.components.getCategoryTheme
 import com.mimo.app.ui.theme.AppAccentRed
 import com.mimo.app.ui.theme.AppBlack
@@ -193,6 +196,7 @@ fun HomeScreen(
     }
 
     var selectedCategory by remember { mutableStateOf<ItemCategory?>(null) }
+    var selectedHomeCollectionId by remember { mutableStateOf<String?>(null) }
 
     val filteredItems = savedItems.filter { item ->
         val matchesQuery = searchQuery.isBlank() ||
@@ -203,6 +207,7 @@ fun HomeScreen(
             (item.noteContent?.contains(searchQuery, ignoreCase = true) == true)
 
         val matchesCategory = selectedCategory == null || item.category == selectedCategory
+        val matchesHomeCollection = selectedHomeCollectionId == null || item.collectionId == selectedHomeCollectionId
 
         val matchesFilter = when (sortFilterMode) {
             1 -> item.isFavorite
@@ -211,7 +216,7 @@ fun HomeScreen(
             else -> !item.isArchived
         }
 
-        matchesQuery && matchesCategory && matchesFilter
+        matchesQuery && matchesCategory && matchesHomeCollection && matchesFilter
     }
 
     Box(
@@ -258,7 +263,7 @@ fun HomeScreen(
                     )
                 }
                 else -> {
-                    if (selectedCategory == ItemCategory.PHOTO) {
+                    if (selectedCategory == ItemCategory.PHOTO && selectedHomeCollectionId == null) {
                         PhotoGalleryScreen(
                             savedItems = savedItems,
                             onBack = { selectedCategory = null },
@@ -372,11 +377,14 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Albo-style Top Horizontal Category Navigation Dock
-                        AlboCategoryDock(
+                        // Visual library destinations under search. A collection is a real saved list;
+                        // a category is a typed filter, never a fabricated travel collection.
+                        HomeDestinationRow(
                             selectedCategory = selectedCategory,
-                            onSelectCategory = { selectedCategory = it },
-                            modifier = Modifier.fillMaxWidth()
+                            selectedCollectionId = selectedHomeCollectionId,
+                            collections = collections,
+                            onCategory = { selectedHomeCollectionId = null; selectedCategory = it },
+                            onCollection = { selectedHomeCollectionId = it; selectedCategory = null }
                         )
 
                         Spacer(modifier = Modifier.height(20.dp))
@@ -614,7 +622,12 @@ fun HomeScreen(
                                     ) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(
-                                                text = if (searchQuery.isEmpty()) "No saves yet" else "No matching saves found",
+                                                text = when {
+                                                    searchQuery.isNotEmpty() -> "No matching saves found"
+                                                    selectedHomeCollectionId != null -> "No saves in this collection"
+                                                    selectedCategory != null -> "No saves in this category"
+                                                    else -> "No saves yet"
+                                                },
                                                 fontSize = 15.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = AppBlack
@@ -1606,6 +1619,89 @@ fun LiquidGlassBottomBar(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+private sealed class LibraryDestination {
+    data class Category(val category: ItemCategory, val label: String) : LibraryDestination()
+    data class Collection(val collection: UserCollection) : LibraryDestination()
+}
+
+/** Scrollable visual destinations, backed only by categories and real user collections. */
+@Composable
+private fun HomeDestinationRow(
+    selectedCategory: ItemCategory?,
+    selectedCollectionId: String?,
+    collections: List<UserCollection>,
+    onCategory: (ItemCategory?) -> Unit,
+    onCollection: (String?) -> Unit
+) {
+    val destinations = remember(collections.toList()) {
+        val featured = collections.filter { !it.isArchived }.sortedBy { it.sortOrder }.take(6)
+            .map { LibraryDestination.Collection(it) }
+        listOf(
+            LibraryDestination.Category(ItemCategory.RECIPE, "Recipes"),
+            LibraryDestination.Category(ItemCategory.PLACE, "Travel & places"),
+            LibraryDestination.Category(ItemCategory.FILM, "Watch"),
+            LibraryDestination.Category(ItemCategory.PHOTO, "Photos"),
+            LibraryDestination.Category(ItemCategory.MUSIC, "Music"),
+            LibraryDestination.Category(ItemCategory.BOOK, "Books")
+        ) + featured
+    }
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 3.dp)
+    ) {
+        item {
+            val selected = selectedCategory == null && selectedCollectionId == null
+            Row(
+                modifier = Modifier.height(58.dp).clip(RoundedCornerShape(22.dp))
+                    .background(if (selected) AppBlack else AppInputBg)
+                    .border(1.dp, AppBorderGrey, RoundedCornerShape(22.dp))
+                    .clickable { onCollection(null); onCategory(null) }
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Home, contentDescription = null,
+                    tint = if (selected) AppWhite else AppBlack, modifier = Modifier.size(25.dp))
+                Spacer(Modifier.width(9.dp))
+                Text("All", color = if (selected) AppWhite else AppBlack,
+                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        items(destinations) { destination ->
+            val category = (destination as? LibraryDestination.Category)?.category
+            val collection = (destination as? LibraryDestination.Collection)?.collection
+            val selected = if (collection != null) selectedCollectionId == collection.id
+                else selectedCategory == category && selectedCollectionId == null
+            val label = collection?.name ?: (destination as LibraryDestination.Category).label
+            Row(
+                modifier = Modifier.height(58.dp).clip(RoundedCornerShape(22.dp))
+                    .background(if (selected) AppBlack else AppInputBg)
+                    .border(1.dp, AppBorderGrey, RoundedCornerShape(22.dp))
+                    .clickable {
+                        if (collection != null) onCollection(if (selected) null else collection.id)
+                        else onCategory(if (selected) null else category)
+                    }.padding(start = 10.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (category != null) {
+                    Image(painter = painterResource(getCategoryDrawableRes(category)),
+                        contentDescription = null, modifier = Modifier.size(36.dp),
+                        contentScale = ContentScale.Fit)
+                } else {
+                    val iconCategory = ItemCategory.COLLECTION
+                    Image(painter = painterResource(getCategoryDrawableRes(iconCategory)),
+                        contentDescription = null, modifier = Modifier.size(36.dp),
+                        contentScale = ContentScale.Fit)
+                }
+                Spacer(Modifier.width(7.dp))
+                Text(label, color = if (selected) AppWhite else AppBlack,
+                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
