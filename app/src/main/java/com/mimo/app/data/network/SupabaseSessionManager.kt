@@ -51,6 +51,8 @@ object SupabaseSessionManager {
 
     fun getAccessToken(): String? = prefs?.getString(KEY_ACCESS_TOKEN, null)
     fun getRefreshToken(): String? = prefs?.getString(KEY_REFRESH_TOKEN, null)
+    fun tokenExpiresWithin(milliseconds: Long): Boolean =
+        prefs?.getLong(KEY_TOKEN_EXPIRY, 0L)?.let { it <= System.currentTimeMillis() + milliseconds } ?: true
     fun getUserId(): String? = prefs?.getString(KEY_USER_ID, null)
     fun getUserEmail(): String? = prefs?.getString(KEY_USER_EMAIL, null)
     fun getUserName(): String? = prefs?.getString(KEY_USER_NAME, null)

@@ -5,6 +5,8 @@ import com.mimo.app.data.model.SaveItem
 import com.mimo.app.data.model.UserCollection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -35,11 +37,48 @@ object SupabaseDataService {
 
     private const val REST_URL = "${SupabaseConfig.BASE_URL}/rest/v1"
 
-    private fun getAuthHeaders(): Map<String, String>? {
-        val token = SupabaseSessionManager.getAccessToken() ?: return null
-        val anonKey = SupabaseConfig.getAnonKey()
+    private val refreshMutex = Mutex()
+
+    /** Refresh ahead of expiry, serializing callers because Supabase rotates refresh tokens. */
+    private suspend fun getAuthHeaders(): Map<String, String>? {
+        val token = refreshMutex.withLock {
+            val current = SupabaseSessionManager.getAccessToken() ?: return@withLock null
+            if (!SupabaseSessionManager.tokenExpiresWithin(60_000)) return@withLock current
+            val refresh = SupabaseSessionManager.getRefreshToken()
+            if (refresh.isNullOrBlank()) return@withLock null
+            try {
+                val payload = JSONObject().put("refresh_token", refresh).toString()
+                val request = Request.Builder()
+                    .url("${SupabaseConfig.AUTH_URL}/token?grant_type=refresh_token")
+                    .header("apikey", SupabaseConfig.getAnonKey())
+                    .header("Content-Type", "application/json")
+                    .post(payload.toRequestBody("application/json".toMediaType()))
+                    .build()
+                httpClient.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        // Only a rejected refresh token calls for re-auth. Network/server trouble
+                        // must not silently log out the user or erase the in-progress save.
+                        // Keep the current editor and its unsaved content visible. The caller
+                        // will surface a sign-in prompt rather than redirecting mid-save.
+                        return@withLock null
+                    }
+                    val json = JSONObject(body)
+                    val access = json.getString("access_token")
+                    val replacement = json.optString("refresh_token").ifBlank { refresh }
+                    SupabaseSessionManager.setSession(
+                        accessToken = access,
+                        refreshToken = replacement,
+                        expiresInSeconds = json.optLong("expires_in", 3600).coerceAtLeast(1)
+                    )
+                    access
+                }
+            } catch (_: Exception) {
+                null
+            }
+        } ?: return null
         return mapOf(
-            "apikey" to anonKey,
+            "apikey" to SupabaseConfig.getAnonKey(),
             "Authorization" to "Bearer $token",
             "Content-Type" to "application/json"
         )
@@ -52,7 +91,7 @@ object SupabaseDataService {
      * GET /rest/v1/saves?user_id=eq.{userId}&order=created_at.desc
      */
     suspend fun fetchSaves(userId: String): Result<List<SaveItem>> = withContext(Dispatchers.IO) {
-        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Session expired or unavailable. Please sign in again before retrying; your unsaved item is still here."))
         if (userId.isBlank()) return@withContext Result.failure(Exception("Invalid user ID"))
 
         try {
@@ -84,7 +123,7 @@ object SupabaseDataService {
      * POST /rest/v1/saves
      */
     suspend fun insertSave(item: SaveItem, userId: String): Result<SaveItem> = withContext(Dispatchers.IO) {
-        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Session expired or unavailable. Please sign in again before retrying; your unsaved item is still here."))
         if (userId.isBlank()) return@withContext Result.failure(Exception("Invalid user ID"))
 
         try {
@@ -135,7 +174,7 @@ object SupabaseDataService {
      * PATCH /rest/v1/saves?id=eq.{id}&user_id=eq.{userId}
      */
     suspend fun updateSave(item: SaveItem, userId: String): Result<SaveItem> = withContext(Dispatchers.IO) {
-        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Session expired or unavailable. Please sign in again before retrying; your unsaved item is still here."))
         if (userId.isBlank()) return@withContext Result.failure(Exception("Invalid user ID"))
 
         try {
@@ -183,7 +222,7 @@ object SupabaseDataService {
      * DELETE /rest/v1/saves?id=eq.{id}&user_id=eq.{userId}
      */
     suspend fun deleteSave(saveId: String, userId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Session expired or unavailable. Please sign in again before retrying; your unsaved item is still here."))
         if (userId.isBlank() || saveId.isBlank()) return@withContext Result.failure(Exception("Invalid parameters"))
 
         try {
@@ -215,7 +254,7 @@ object SupabaseDataService {
      * PATCH /rest/v1/saves?id=eq.{id}&user_id=eq.{userId}
      */
     suspend fun setFavorite(saveId: String, isFavorite: Boolean, userId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Session expired or unavailable. Please sign in again before retrying; your unsaved item is still here."))
         if (userId.isBlank() || saveId.isBlank()) return@withContext Result.failure(Exception("Invalid parameters"))
 
         try {
@@ -242,7 +281,7 @@ object SupabaseDataService {
     // ==================== COLLECTIONS CRUD ====================
 
     suspend fun fetchCollections(userId: String): Result<List<UserCollection>> = withContext(Dispatchers.IO) {
-        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Session expired or unavailable. Please sign in again before retrying; your unsaved item is still here."))
         if (userId.isBlank()) return@withContext Result.failure(Exception("Invalid user ID"))
 
         try {
@@ -270,7 +309,7 @@ object SupabaseDataService {
     }
 
     suspend fun insertCollection(col: UserCollection, userId: String): Result<UserCollection> = withContext(Dispatchers.IO) {
-        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Session expired or unavailable. Please sign in again before retrying; your unsaved item is still here."))
         if (userId.isBlank()) return@withContext Result.failure(Exception("Invalid user ID"))
 
         try {
@@ -311,7 +350,7 @@ object SupabaseDataService {
     }
 
     suspend fun deleteCollection(collectionId: String, userId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Session expired or unavailable. Please sign in again before retrying; your unsaved item is still here."))
         if (userId.isBlank() || collectionId.isBlank()) return@withContext Result.failure(Exception("Invalid parameters"))
 
         try {
@@ -334,7 +373,7 @@ object SupabaseDataService {
     // ==================== COLLECTION ITEMS (JOIN TABLE) ====================
 
     suspend fun fetchCollectionItemMappings(): Result<Map<String, String>> = withContext(Dispatchers.IO) {
-        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Session expired or unavailable. Please sign in again before retrying; your unsaved item is still here."))
 
         try {
             val requestBuilder = Request.Builder()
@@ -367,7 +406,7 @@ object SupabaseDataService {
     }
 
     suspend fun addSaveToCollection(collectionId: String, saveId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Session expired or unavailable. Please sign in again before retrying; your unsaved item is still here."))
 
         try {
             val jsonPayload = JSONObject().apply {
@@ -392,7 +431,7 @@ object SupabaseDataService {
     }
 
     suspend fun removeSaveFromCollection(collectionId: String, saveId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val headers = getAuthHeaders() ?: return@withContext Result.failure(Exception("Session expired or unavailable. Please sign in again before retrying; your unsaved item is still here."))
 
         try {
             val requestBuilder = Request.Builder()
