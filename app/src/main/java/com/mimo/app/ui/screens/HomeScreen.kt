@@ -66,6 +66,8 @@ import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -83,6 +85,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -103,7 +107,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.mimo.app.data.model.ItemCategory
 import com.mimo.app.data.model.SaveItem
-import com.mimo.app.ui.components.AlboCategoryDock
+import com.mimo.app.data.model.UserCollection
 import com.mimo.app.ui.components.AppLogo
 import com.mimo.app.ui.components.CardFloatingPill
 import com.mimo.app.ui.components.CategoryBadgeIcon
@@ -111,6 +115,7 @@ import com.mimo.app.ui.components.ItemPreviewPopup
 import com.mimo.app.ui.components.PlatformBadgeIcon
 import com.mimo.app.ui.components.SaveHubBottomSheet
 import com.mimo.app.ui.components.getCategoryIcon
+import com.mimo.app.ui.components.getCategoryDrawableRes
 import com.mimo.app.ui.components.getCategoryTheme
 import com.mimo.app.ui.theme.AppAccentRed
 import com.mimo.app.ui.theme.AppBlack
@@ -177,6 +182,8 @@ fun HomeScreen(
 
     // State for Detail Screen (in-app photo/video streaming)
     var selectedDetailItem by remember { mutableStateOf<SaveItem?>(null) }
+    var pendingDelete by remember { mutableStateOf<SaveItem?>(null) }
+    var deleteInProgress by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val savedItems = com.mimo.app.data.repository.SaveRepository.saves
@@ -193,6 +200,10 @@ fun HomeScreen(
     }
 
     var selectedCategory by remember { mutableStateOf<ItemCategory?>(null) }
+    var selectedHomeCollectionId by remember { mutableStateOf<String?>(null) }
+
+    val recentItems = savedItems.filter { !it.isArchived }
+        .sortedByDescending { it.createdAt }.take(5)
 
     val filteredItems = savedItems.filter { item ->
         val matchesQuery = searchQuery.isBlank() ||
@@ -203,6 +214,7 @@ fun HomeScreen(
             (item.noteContent?.contains(searchQuery, ignoreCase = true) == true)
 
         val matchesCategory = selectedCategory == null || item.category == selectedCategory
+        val matchesHomeCollection = selectedHomeCollectionId == null || item.collectionId == selectedHomeCollectionId
 
         val matchesFilter = when (sortFilterMode) {
             1 -> item.isFavorite
@@ -211,7 +223,7 @@ fun HomeScreen(
             else -> !item.isArchived
         }
 
-        matchesQuery && matchesCategory && matchesFilter
+        matchesQuery && matchesCategory && matchesHomeCollection && matchesFilter
     }
 
     Box(
@@ -258,6 +270,14 @@ fun HomeScreen(
                     )
                 }
                 else -> {
+                    if (selectedCategory == ItemCategory.PHOTO && selectedHomeCollectionId == null) {
+                        PhotoGalleryScreen(
+                            savedItems = savedItems,
+                            onBack = { selectedCategory = null },
+                            onOpen = { selectedDetailItem = it },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
                     // HOME SCREEN CONTENT
                     Column(
                         modifier = Modifier
@@ -364,11 +384,14 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Albo-style Top Horizontal Category Navigation Dock
-                        AlboCategoryDock(
+                        // Visual library destinations under search. A collection is a real saved list;
+                        // a category is a typed filter, never a fabricated travel collection.
+                        HomeDestinationRow(
                             selectedCategory = selectedCategory,
-                            onSelectCategory = { selectedCategory = it },
-                            modifier = Modifier.fillMaxWidth()
+                            selectedCollectionId = selectedHomeCollectionId,
+                            collections = collections,
+                            onCategory = { selectedHomeCollectionId = null; selectedCategory = it },
+                            onCollection = { selectedHomeCollectionId = it; selectedCategory = null }
                         )
 
                         Spacer(modifier = Modifier.height(20.dp))
@@ -390,7 +413,7 @@ fun HomeScreen(
                                     modifier = Modifier.padding(bottom = 12.dp)
                                 )
 
-                                if (savedItems.isEmpty()) {
+                                if (recentItems.isEmpty()) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -411,7 +434,7 @@ fun HomeScreen(
                                         contentPadding = PaddingValues(vertical = 4.dp),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        items(savedItems.take(5), key = { "recent_" + it.id }) { item ->
+                                        items(recentItems, key = { "recent_" + it.id }) { item ->
                                             RecentSaveCarouselCard(
                                                 item = item,
                                                 onLongPress = { offset ->
@@ -606,7 +629,12 @@ fun HomeScreen(
                                     ) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(
-                                                text = if (searchQuery.isEmpty()) "No saves yet" else "No matching saves found",
+                                                text = when {
+                                                    searchQuery.isNotEmpty() -> "No matching saves found"
+                                                    selectedHomeCollectionId != null -> "No saves in this collection"
+                                                    selectedCategory != null -> "No saves in this category"
+                                                    else -> "No saves yet"
+                                                },
                                                 fontSize = 15.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = AppBlack
@@ -670,6 +698,7 @@ fun HomeScreen(
                         }
                     }
                 }
+                    }
             }
         }
 
@@ -736,15 +765,35 @@ fun HomeScreen(
                     previewAnchor = null
                 },
                 onDelete = { item ->
-                    scope.launch {
-                        com.mimo.app.data.repository.SaveRepository.deleteItem(item)
-                    }
-                    if (selectedDetailItem?.id == item.id) {
-                        selectedDetailItem = null
-                    }
+                    pendingDelete = item
                     previewItem = null
                     previewAnchor = null
                 }
+            )
+        }
+
+        pendingDelete?.let { target ->
+            AlertDialog(
+                onDismissRequest = { if (!deleteInProgress) pendingDelete = null },
+                title = { Text("Delete this save permanently?", color = AppBlack) },
+                text = { Text("This removes it from your account and synced devices. It cannot be undone.", color = AppLightGrey) },
+                confirmButton = {
+                    TextButton(enabled = !deleteInProgress, onClick = {
+                        deleteInProgress = true
+                        scope.launch {
+                            val result = com.mimo.app.data.repository.SaveRepository.deleteItem(target)
+                            deleteInProgress = false
+                            if (result.isSuccess) {
+                                if (selectedDetailItem?.id == target.id) selectedDetailItem = null
+                                pendingDelete = null
+                            }
+                        }
+                    }) { Text(if (deleteInProgress) "Deleting..." else "Delete permanently", color = AppAccentRed) }
+                },
+                dismissButton = { TextButton(enabled = !deleteInProgress, onClick = { pendingDelete = null }) {
+                    Text("Cancel", color = AppBlack)
+                } },
+                containerColor = AppCardBg
             )
         }
 
@@ -782,12 +831,7 @@ fun HomeScreen(
                             }
                         }
                     },
-                    onDelete = { itemToDel ->
-                        scope.launch {
-                            com.mimo.app.data.repository.SaveRepository.deleteItem(itemToDel)
-                        }
-                        selectedDetailItem = null
-                    },
+                    onDelete = { itemToDel -> pendingDelete = itemToDel },
                     onUpdateItem = { itemToUpdate ->
                         scope.launch {
                             com.mimo.app.data.repository.SaveRepository.updateItem(itemToUpdate)
@@ -817,11 +861,10 @@ fun RecentSaveCarouselCard(
 
     Column(
         modifier = Modifier
-            .width(168.dp)
-            .height(225.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .width(150.dp)
+            .height(207.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(AppCardBg)
-            .border(1.dp, AppBorderGrey, RoundedCornerShape(20.dp))
             .onGloballyPositioned { coordinates ->
                 val pos = coordinates.boundsInRoot()
                 cardCenter = pos.center
@@ -839,7 +882,7 @@ fun RecentSaveCarouselCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(145.dp)
+                .height(151.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(if (isDark) catTheme.containerDark else catTheme.containerLight),
             contentAlignment = Alignment.Center
@@ -849,7 +892,9 @@ fun RecentSaveCarouselCard(
                     model = item.imageUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    error = painterResource(getCategoryDrawableRes(item.category)),
+                    fallback = painterResource(getCategoryDrawableRes(item.category))
                 )
 
                 // Subtle dark vignette at bottom of image for badge legibility
@@ -1263,6 +1308,8 @@ fun LiquidGlassBottomBar(
     val isGlassEnabled = LiquidGlassManager.isEnabled
     val surfaceOpacity = LiquidGlassManager.surfaceOpacity
     val specular = LiquidGlassManager.specularHighlight
+    val vibrancy = LiquidGlassManager.vibrancy
+    val blurRadius = LiquidGlassManager.blurRadiusDp
     val density = LocalDensity.current
 
     // Glass Background Gradient
@@ -1292,8 +1339,8 @@ fun LiquidGlassBottomBar(
         if (isDark) {
             Brush.verticalGradient(
                 listOf(
-                    Color(0x66FFFFFF),
-                    Color(0x20FFFFFF),
+                    Color.White.copy(alpha = (0.22f * vibrancy).coerceAtMost(0.70f)),
+                    Color.White.copy(alpha = (0.10f * vibrancy).coerceAtMost(0.40f)),
                     Color(0x10FFFFFF)
                 )
             )
@@ -1327,9 +1374,9 @@ fun LiquidGlassBottomBar(
             .width(animatedCapsuleWidth)
             .height(60.dp)
             .shadow(
-                elevation = 16.dp,
+                elevation = (8f + blurRadius).dp,
                 shape = RoundedCornerShape(percent = 50),
-                ambientColor = if (isDark) Color(0x66000000) else Color(0x1F000000),
+                ambientColor = if (isDark) Color.Black.copy(alpha = (0.15f + blurRadius / 75f).coerceAtMost(0.60f)) else Color(0x1F000000),
                 spotColor = if (isDark) Color(0x80000000) else Color(0x26000000)
             )
             .clip(RoundedCornerShape(percent = 50))
@@ -1401,11 +1448,10 @@ fun LiquidGlassBottomBar(
                             .size(38.dp)
                             .clip(CircleShape)
                             .background(
-                                if (isDark) Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFDDDDDD)))
+                                if (isDark) Brush.verticalGradient(listOf(Color(0xFF33343A), Color(0xFF202126)))
                                 else Brush.verticalGradient(listOf(Color(0xFF222222), Color(0xFF000000)))
                             )
-                            .border(1.dp, if (isDark) Color(0x66FFFFFF) else Color(0x33FFFFFF), CircleShape)
-                            .shadow(3.dp, CircleShape)
+                            .border(1.dp, if (isDark) Color(0x55FFFFFF) else Color(0x33FFFFFF), CircleShape)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
@@ -1416,7 +1462,7 @@ fun LiquidGlassBottomBar(
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = "Add Save",
-                            tint = if (isDark) Color(0xFF121212) else Color(0xFFFFFFFF),
+                            tint = Color.White,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -1493,7 +1539,7 @@ fun LiquidGlassBottomBar(
                                         .background(
                                             if (isDark) {
                                                 Brush.verticalGradient(
-                                                    listOf(Color(0xFFFFFFFF), Color(0xFFDDDDDD))
+                                                    listOf(Color(0xFF33343A), Color(0xFF202126))
                                                 )
                                             } else {
                                                 Brush.verticalGradient(
@@ -1503,10 +1549,9 @@ fun LiquidGlassBottomBar(
                                         )
                                         .border(
                                             1.dp,
-                                            if (isDark) Color(0x66FFFFFF) else Color(0x33FFFFFF),
+                                            if (isDark) Color(0x55FFFFFF) else Color(0x33FFFFFF),
                                             CircleShape
                                         )
-                                        .shadow(4.dp, CircleShape)
                                         .clickable(
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,
@@ -1517,7 +1562,7 @@ fun LiquidGlassBottomBar(
                                     Icon(
                                         imageVector = Icons.Default.Add,
                                         contentDescription = "Add Save",
-                                        tint = if (isDark) Color(0xFF121212) else Color(0xFFFFFFFF),
+                                        tint = Color.White,
                                         modifier = Modifier.size(22.dp)
                                     )
                                 }
@@ -1597,6 +1642,89 @@ fun LiquidGlassBottomBar(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+private sealed class LibraryDestination {
+    data class Category(val category: ItemCategory, val label: String) : LibraryDestination()
+    data class Collection(val collection: UserCollection) : LibraryDestination()
+}
+
+/** Scrollable visual destinations, backed only by categories and real user collections. */
+@Composable
+private fun HomeDestinationRow(
+    selectedCategory: ItemCategory?,
+    selectedCollectionId: String?,
+    collections: List<UserCollection>,
+    onCategory: (ItemCategory?) -> Unit,
+    onCollection: (String?) -> Unit
+) {
+    val destinations = remember(collections.toList()) {
+        val featured = collections.filter { !it.isArchived }.sortedBy { it.sortOrder }.take(6)
+            .map { LibraryDestination.Collection(it) }
+        listOf(
+            LibraryDestination.Category(ItemCategory.RECIPE, "Recipes"),
+            LibraryDestination.Category(ItemCategory.PLACE, "Travel & places"),
+            LibraryDestination.Category(ItemCategory.FILM, "Watch"),
+            LibraryDestination.Category(ItemCategory.PHOTO, "Photos"),
+            LibraryDestination.Category(ItemCategory.MUSIC, "Music"),
+            LibraryDestination.Category(ItemCategory.BOOK, "Books")
+        ) + featured
+    }
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 3.dp)
+    ) {
+        item {
+            val selected = selectedCategory == null && selectedCollectionId == null
+            Row(
+                modifier = Modifier.height(58.dp).clip(RoundedCornerShape(22.dp))
+                    .background(if (selected) AppBlack else AppInputBg)
+                    .border(1.dp, AppBorderGrey, RoundedCornerShape(22.dp))
+                    .clickable { onCollection(null); onCategory(null) }
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Home, contentDescription = null,
+                    tint = if (selected) AppWhite else AppBlack, modifier = Modifier.size(25.dp))
+                Spacer(Modifier.width(9.dp))
+                Text("All", color = if (selected) AppWhite else AppBlack,
+                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        items(destinations) { destination ->
+            val category = (destination as? LibraryDestination.Category)?.category
+            val collection = (destination as? LibraryDestination.Collection)?.collection
+            val selected = if (collection != null) selectedCollectionId == collection.id
+                else selectedCategory == category && selectedCollectionId == null
+            val label = collection?.name ?: (destination as LibraryDestination.Category).label
+            Row(
+                modifier = Modifier.height(58.dp).clip(RoundedCornerShape(22.dp))
+                    .background(if (selected) AppBlack else AppInputBg)
+                    .border(1.dp, AppBorderGrey, RoundedCornerShape(22.dp))
+                    .clickable {
+                        if (collection != null) onCollection(if (selected) null else collection.id)
+                        else onCategory(if (selected) null else category)
+                    }.padding(start = 10.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (category != null) {
+                    Image(painter = painterResource(getCategoryDrawableRes(category)),
+                        contentDescription = null, modifier = Modifier.size(36.dp),
+                        contentScale = ContentScale.Fit)
+                } else {
+                    val iconCategory = ItemCategory.COLLECTION
+                    Image(painter = painterResource(getCategoryDrawableRes(iconCategory)),
+                        contentDescription = null, modifier = Modifier.size(36.dp),
+                        contentScale = ContentScale.Fit)
+                }
+                Spacer(Modifier.width(7.dp))
+                Text(label, color = if (selected) AppWhite else AppBlack,
+                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

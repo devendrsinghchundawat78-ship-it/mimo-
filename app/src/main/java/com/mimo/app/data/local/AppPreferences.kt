@@ -9,6 +9,7 @@ import android.content.SharedPreferences
 object AppPreferences {
     private const val PREFS_NAME = "mimo_app_preferences"
     private const val KEY_HAS_SEEN_WELCOME = "has_seen_welcome"
+    private const val KEY_DARK_THEME = "dark_theme"
 
     private var prefs: SharedPreferences? = null
 
@@ -24,6 +25,12 @@ object AppPreferences {
      */
     fun hasSeenWelcome(): Boolean {
         return prefs?.getBoolean(KEY_HAS_SEEN_WELCOME, false) ?: false
+    }
+
+    fun isDarkTheme(): Boolean = prefs?.getBoolean(KEY_DARK_THEME, true) ?: true
+
+    fun setDarkTheme(isDark: Boolean) {
+        prefs?.edit()?.putBoolean(KEY_DARK_THEME, isDark)?.apply()
     }
 
     fun setHasSeenWelcome(seen: Boolean = true) {

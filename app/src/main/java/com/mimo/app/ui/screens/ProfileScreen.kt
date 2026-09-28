@@ -1,6 +1,10 @@
 package com.mimo.app.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import org.json.JSONArray
+import org.json.JSONObject
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -26,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -102,9 +107,8 @@ import com.mimo.app.ui.theme.AppBorderGrey
 import com.mimo.app.ui.theme.AppInputBg
 import com.mimo.app.ui.theme.AppLightGrey
 import com.mimo.app.ui.theme.AppWhite
-import com.mimo.app.ui.theme.LiquidGlassManager
 import com.mimo.app.ui.theme.ThemeManager
-import com.mimo.app.ui.components.LiquidGlassSettingsSheet
+import com.mimo.app.data.local.AppPreferences
 
 data class ProfileData(
     val displayName: String = "",
@@ -597,6 +601,7 @@ fun ProfileScreen(
     // 3. Settings Modal Bottom Sheet (Categorized according to Rule 3)
     if (showSettingsSheet) {
         SettingsBottomSheet(
+            savedItems = savedItems,
             onDismiss = { showSettingsSheet = false },
             onSignOut = {
                 showSettingsSheet = false
@@ -887,307 +892,126 @@ private fun ProfileInputField(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsBottomSheet(
+    savedItems: List<SaveItem>,
     onDismiss: () -> Unit,
     onSignOut: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var pushNotifications by remember { mutableStateOf(true) }
-    var saveOffline by remember { mutableStateOf(false) }
-    var showLiquidGlassSettings by remember { mutableStateOf(false) }
+    var page by remember { mutableStateOf("Settings") }
+    var showLegalNotice by remember { mutableStateOf<String?>(null) }
+    var exportContent by remember { mutableStateOf("") }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(exportContent.toByteArray(Charsets.UTF_8))
+                } ?: error("Could not open export file")
+            }.onFailure { showLegalNotice = "Export failed" }
+        }
+    }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = AppWhite,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 36.dp)
-        ) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Settings",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AppBlack
-                )
+    if (showLegalNotice != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showLegalNotice = null },
+            title = { Text(showLegalNotice.orEmpty()) },
+            text = { Text(if (showLegalNotice == "Export failed")
+                "Could not write the file. Your saves have not changed."
+                else "This document has not been published yet. No legal terms are being represented here.") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { showLegalNotice = null }) { Text("OK") } }
+        )
+    }
 
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = AppBlack,
-                        modifier = Modifier.size(20.dp)
-                    )
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState,
+        containerColor = AppWhite, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 36.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(page, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AppBlack)
+                IconButton(onClick = { if (page == "Settings") onDismiss() else page = "Settings" }) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = AppBlack)
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
-            ) {
-                // Group 1: Account
-                item {
-                    SettingsSection(title = "Account") {
-                        val sessionEmail = com.mimo.app.data.network.SupabaseSessionManager.currentUserEmail
-                        SettingsRow(label = "Email", value = sessionEmail ?: "Not signed in")
-                        SettingsRow(label = "Security & Password")
-                        SettingsRow(label = "Saved Archive")
-                    }
-                }
-
-                // Group 2: Preferences
-                item {
-                    SettingsSection(title = "Preferences") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Dark Mode",
-                                fontSize = 14.sp,
-                                color = AppBlack
-                            )
-                            Switch(
-                                checked = ThemeManager.isDark,
-                                onCheckedChange = { ThemeManager.isDark = it },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = AppWhite,
-                                    checkedTrackColor = AppBlack,
-                                    uncheckedThumbColor = AppLightGrey,
-                                    uncheckedTrackColor = AppInputBg
-                                )
-                            )
-                        }
-                        SettingsRow(label = "Default View", value = "Grid")
-                        SettingsRow(
-                            label = "Liquid Glass Effect",
-                            value = if (LiquidGlassManager.isEnabled) "On" else "Off",
-                            onClick = { showLiquidGlassSettings = true }
-                        )
-                        SettingsRow(label = "Language", value = "English")
-                    }
-                }
-
-                // Group 3: Notifications
-                item {
-                    SettingsSection(title = "Notifications") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Push Notifications",
-                                fontSize = 14.sp,
-                                color = AppBlack
-                            )
-                            Switch(
-                                checked = pushNotifications,
-                                onCheckedChange = { pushNotifications = it },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = AppWhite,
-                                    checkedTrackColor = AppBlack,
-                                    uncheckedThumbColor = AppLightGrey,
-                                    uncheckedTrackColor = AppInputBg
-                                )
-                            )
-                        }
-                    }
-                }
-
-                // Group 4: Storage & Data
-                item {
-                    SettingsSection(title = "Storage & Data") {
-                        // Google Drive Integration
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Google Drive",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = AppBlack
-                                )
-                                if (GoogleDriveService.isConnected && !GoogleDriveService.connectedEmail.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = GoogleDriveService.connectedEmail.orEmpty(),
-                                        fontSize = 12.sp,
-                                        color = AppLightGrey
-                                    )
-                                } else if (!GoogleDriveService.errorMessage.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = GoogleDriveService.errorMessage.orEmpty(),
-                                        fontSize = 11.sp,
-                                        color = AppAccentRed
-                                    )
-                                }
+            Spacer(Modifier.height(16.dp))
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                when (page) {
+                    "Archived saves" -> {
+                        val archived = savedItems.filter { it.isArchived }
+                        if (archived.isEmpty()) item { Text("No archived saves", color = AppLightGrey) }
+                        items(archived.size) { index ->
+                            val save = archived[index]
+                            SettingsSection("${index + 1}") {
+                                SettingsRow(save.title, value = save.category.name.lowercase())
                             }
-
-                            if (GoogleDriveService.isLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                    color = AppBlack
-                                )
-                            } else if (GoogleDriveService.isConnected) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(AppWhite)
-                                            .border(1.dp, AppBorderGrey, RoundedCornerShape(8.dp))
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = AppBlack,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "Connected",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = AppBlack
-                                        )
+                        }
+                    }
+                    "Appearance" -> item {
+                        SettingsSection("Appearance") {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Dark mode", color = AppBlack)
+                                Switch(checked = ThemeManager.isDark,
+                                    onCheckedChange = { ThemeManager.isDark = it; AppPreferences.setDarkTheme(it) })
+                            }
+                        }
+                    }
+                    else -> {
+                        item {
+                            SettingsSection("General") {
+                                SettingsRow("Archived saves", onClick = { page = "Archived saves" })
+                                SettingsRow("Appearance", value = if (ThemeManager.isDark) "Dark" else "Light",
+                                    onClick = { page = "Appearance" })
+                            }
+                        }
+                        item {
+                            SettingsSection("Resources") {
+                                SettingsRow("Export your saves", onClick = {
+                                    val export = JSONArray()
+                                    savedItems.forEach { save ->
+                                        export.put(JSONObject().apply {
+                                            put("title", save.title)
+                                            put("description", save.subtitle)
+                                            put("url", save.url)
+                                            put("type", save.category.name)
+                                            put("note", save.noteContent ?: "")
+                                            put("archived", save.isArchived)
+                                        })
                                     }
-
-                                    Text(
-                                        text = "Disconnect",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = AppAccentRed,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable { GoogleDriveService.disconnect() }
-                                            .padding(horizontal = 4.dp, vertical = 4.dp)
-                                    )
-                                }
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(AppBlack)
-                                        .clickable {
-                                            scope.launch {
-                                                GoogleDriveService.startConnectFlow(context)
-                                            }
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "Connect",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = AppWhite
-                                    )
-                                }
+                                    exportContent = export.toString(2)
+                                    exportLauncher.launch("mimo-saves.json")
+                                })
                             }
                         }
-
-                        HorizontalDivider(
-                            thickness = 0.5.dp,
-                            color = AppBorderGrey,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Save Content Offline",
-                                fontSize = 14.sp,
-                                color = AppBlack
-                            )
-                            Switch(
-                                checked = saveOffline,
-                                onCheckedChange = { saveOffline = it },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = AppWhite,
-                                    checkedTrackColor = AppBlack,
-                                    uncheckedThumbColor = AppLightGrey,
-                                    uncheckedTrackColor = AppInputBg
-                                )
-                            )
+                        item {
+                            SettingsSection("Storage & Data") {
+                                SettingsRow("Google Drive", value = "Connection not verified")
+                            }
                         }
-                        SettingsRow(label = "Clear Cache")
-                    }
-                }
-
-                // Group 5: About
-                item {
-                    SettingsSection(title = "About") {
-                        SettingsRow(label = "App Version", value = "1.0.0")
-                        SettingsRow(label = "Privacy Policy")
-                        SettingsRow(label = "Terms of Service")
-                    }
-                }
-
-                // Group 6: Sign Out
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(AppInputBg)
-                            .clickable { onSignOut() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Sign Out",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = AppAccentRed
-                        )
+                        item {
+                            SettingsSection("Helpful links") {
+                                SettingsRow("Terms of Service", value = "Not published",
+                                    onClick = { showLegalNotice = "Terms of Service" })
+                                SettingsRow("Privacy Policy", value = "Not published",
+                                    onClick = { showLegalNotice = "Privacy Policy" })
+                            }
+                        }
+                        item {
+                            Text("Data sources: Movie of the Night, Wikidata, Wikipedia, YouTube",
+                                fontSize = 11.sp, color = AppLightGrey)
+                            Spacer(Modifier.height(12.dp))
+                            Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(12.dp))
+                                .background(AppInputBg).clickable { onSignOut() },
+                                contentAlignment = Alignment.Center) {
+                                Text("Sign Out", fontSize = 14.sp, color = AppAccentRed)
+                            }
+                        }
                     }
                 }
             }
         }
-    }
-
-    if (showLiquidGlassSettings) {
-        LiquidGlassSettingsSheet(
-            onDismiss = { showLiquidGlassSettings = false }
-        )
     }
 }
 

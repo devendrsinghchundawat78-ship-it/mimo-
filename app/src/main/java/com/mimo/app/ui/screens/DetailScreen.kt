@@ -8,6 +8,7 @@ import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedButton
 import com.mimo.app.ui.components.AppInputField
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -91,6 +92,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.mimo.app.data.model.SaveItem
+import com.mimo.app.data.repository.SaveRepository
 import com.mimo.app.ui.components.CategoryBadgeIcon
 import com.mimo.app.ui.components.getCategoryIcon
 import com.mimo.app.ui.theme.AppAccentRed
@@ -130,8 +132,16 @@ fun DetailScreen(
 
     // Related / Other saves (excluding current item)
     val otherSaves = remember(item, allSavedItems) {
-        allSavedItems.filter { it.id != item.id }
+        allSavedItems.filter { other ->
+            other.id != item.id && !other.isArchived &&
+                ((item.collectionId != null && other.collectionId == item.collectionId) ||
+                    other.category == item.category)
+        }.sortedByDescending { it.createdAt }.take(8)
     }
+    val currentCollection = SaveRepository.collections.find { it.id == item.collectionId }
+    val collectionSaves = if (currentCollection != null) allSavedItems.filter {
+        it.collectionId == currentCollection.id && !it.isArchived
+    } else emptyList()
 
     // Liquid Glass styling for floating action buttons
     val glassBg = if (isDark) {
@@ -319,6 +329,38 @@ fun DetailScreen(
                         Spacer(modifier = Modifier.height(14.dp))
                     }
 
+                    // Context comes from owned saved data; do not synthesize AI output.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Mimo AI takeaways", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AppBlack)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Not available yet", fontSize = 12.sp, color = AppLightGrey)
+                    }
+                    Text("Public metadata review is needed before analysis.", fontSize = 12.sp,
+                        color = AppLightGrey, modifier = Modifier.padding(top = 5.dp, bottom = 16.dp))
+
+                    if (currentCollection != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                                .background(AppCardBg).border(1.dp, AppBorderGrey, RoundedCornerShape(18.dp))
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val poster = collectionSaves.firstOrNull { !it.imageUrl.isNullOrBlank() }?.imageUrl
+                            Box(modifier = Modifier.size(68.dp).clip(RoundedCornerShape(10.dp)).background(AppInputBg),
+                                contentAlignment = Alignment.Center) {
+                                if (poster != null) AsyncImage(model = poster, contentDescription = null,
+                                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                else Icon(Icons.Default.FavoriteBorder, contentDescription = null, tint = AppLightGrey)
+                            }
+                            Column(modifier = Modifier.padding(start = 14.dp)) {
+                                Text(currentCollection.name, color = AppBlack, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${collectionSaves.size} saves", color = AppLightGrey, fontSize = 12.sp)
+                            }
+                        }
+                        Spacer(Modifier.height(18.dp))
+                    }
+
                     // Notes Content (if available)
                     if (!item.noteContent.isNullOrBlank()) {
                         Box(
@@ -339,6 +381,15 @@ fun DetailScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
+                    OutlinedButton(onClick = {
+                        editTitle = item.title
+                        editContent = item.noteContent.orEmpty()
+                        showEditNoteDialog = true
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (item.noteContent.isNullOrBlank()) "Add a private note" else "Edit private note",
+                            color = AppBlack)
+                    }
+                    Spacer(Modifier.height(16.dp))
                     HorizontalDivider(thickness = 0.5.dp, color = AppBorderGrey)
                 }
             }
@@ -352,7 +403,7 @@ fun DetailScreen(
                             .padding(horizontal = 20.dp)
                     ) {
                         Text(
-                            text = "More Saves",
+                            text = "Related saves",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium,
                             color = AppBlack
@@ -418,7 +469,7 @@ fun DetailScreen(
                                 type = "text/plain"
                                 putExtra(
                                     Intent.EXTRA_TEXT,
-                                    "${item.title}\n${item.url}"
+                                    if (item.url.isNotBlank()) "${item.title}\n${item.url}" else item.title
                                 )
                             }
                             context.startActivity(Intent.createChooser(shareIntent, "Share Save"))
@@ -496,7 +547,6 @@ fun DetailScreen(
                             onClick = {
                                 showMenu = false
                                 onDelete(item)
-                                onBack()
                             }
                         )
                     }
