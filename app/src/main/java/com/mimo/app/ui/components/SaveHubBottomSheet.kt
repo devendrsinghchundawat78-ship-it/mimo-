@@ -58,6 +58,7 @@ import com.mimo.app.R
 import com.mimo.app.data.model.ItemCategory
 import com.mimo.app.data.model.SaveItem
 import com.mimo.app.data.network.LinkMetadataFetcher
+import com.mimo.app.data.network.MimoServerPreview
 import com.mimo.app.data.network.SupabaseSessionManager
 import com.mimo.app.data.repository.SaveRepository
 import com.mimo.app.ui.theme.AppAccentRed
@@ -681,7 +682,10 @@ fun UrlSaveContent(
                     isFetching = true
                     scope.launch {
                         try {
-                            val metadata = LinkMetadataFetcher.fetch(urlInput.trim())
+                            val rawUrl = urlInput.trim()
+                            val url = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) rawUrl else "https://$rawUrl"
+                            // Metadata is displayed in Mimo; opening a YouTube save is handled externally.
+                            val metadata = MimoServerPreview.fetch(url) ?: LinkMetadataFetcher.fetch(url)
                             val finalTitle = titleInput.ifBlank { metadata.title }
                             onSave(
                                 finalTitle,
