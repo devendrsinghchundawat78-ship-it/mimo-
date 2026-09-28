@@ -83,9 +83,12 @@ returns boolean language plpgsql security definer set search_path = pg_catalog,m
 as $$
 begin
   if jsonb_typeof(p_takeaways)<>'object' or length(p_takeaways::text)>8000 then return false; end if;
-  if not exists(select 1 from public.saves where id=p_save and user_id=p_user and status='active') then return false; end if;
-  if not exists(select 1 from mimo_private.ai_metadata where save_id=p_save and user_id=p_user
-    and source_revision=p_revision and ai_use_allowed and source_kind='reviewed_public_metadata') then return false; end if;
+  -- Lock save and metadata so a concurrent change cannot slip between validation and output write.
+  perform 1 from public.saves where id=p_save and user_id=p_user and status='active' for update;
+  if not found then return false; end if;
+  perform 1 from mimo_private.ai_metadata where save_id=p_save and user_id=p_user
+    and source_revision=p_revision and ai_use_allowed and source_kind='reviewed_public_metadata' for update;
+  if not found then return false; end if;
   insert into mimo_private.ai_takeaways(save_id,user_id,source_revision,takeaways)
     values(p_save,p_user,p_revision,p_takeaways)
     on conflict(save_id) do update set user_id=excluded.user_id,source_revision=excluded.source_revision,
