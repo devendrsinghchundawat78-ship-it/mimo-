@@ -9,7 +9,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-/** Optional server preview for public Vimeo links only. Other sources stay on device. */
+/** Optional server preview for public YouTube/Vimeo links only. Other sources stay on device. */
 object MimoServerPreview {
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -19,7 +19,7 @@ object MimoServerPreview {
     suspend fun fetch(url: String): ParsedMetadata? = withContext(Dispatchers.IO) {
         val bearer = SupabaseSessionManager.getAccessToken() ?: return@withContext null
         val host = runCatching { java.net.URI(url).host?.lowercase() }.getOrNull()
-        if (host !in setOf("vimeo.com", "www.vimeo.com")) return@withContext null
+        if (host !in setOf("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "vimeo.com", "www.vimeo.com")) return@withContext null
         return@withContext try {
             val req = Request.Builder()
                 .url("${SupabaseConfig.BASE_URL}/functions/v1/mimo-link-details")

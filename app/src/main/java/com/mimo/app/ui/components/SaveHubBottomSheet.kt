@@ -684,11 +684,8 @@ fun UrlSaveContent(
                         try {
                             val rawUrl = urlInput.trim()
                             val url = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) rawUrl else "https://$rawUrl"
-                            val host = runCatching { java.net.URI(url).host?.lowercase() }.getOrNull()
-                            val metadata = if (host in setOf("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be")) {
-                                // YouTube saves keep the original link. Do not fetch its metadata or stream URL.
-                                com.mimo.app.data.network.ParsedMetadata("YouTube", "", null, platform = "YouTube", canonicalUrl = url)
-                            } else MimoServerPreview.fetch(url) ?: LinkMetadataFetcher.fetch(url)
+                            // Metadata is displayed in Mimo; opening a YouTube save is handled externally.
+                            val metadata = MimoServerPreview.fetch(url) ?: LinkMetadataFetcher.fetch(url)
                             val finalTitle = titleInput.ifBlank { metadata.title }
                             onSave(
                                 finalTitle,
