@@ -188,14 +188,21 @@ object SupabaseDataService {
 
         try {
             val requestBuilder = Request.Builder()
-                .url("$REST_URL/saves?id=eq.$saveId&user_id=eq.$userId")
+                .url("$REST_URL/saves?id=eq.$saveId&user_id=eq.$userId&select=id")
+                .header("Prefer", "return=representation")
                 .delete()
 
             headers.forEach { (k, v) -> requestBuilder.header(k, v) }
 
             val response = httpClient.newCall(requestBuilder.build()).execute()
+            val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 return@withContext Result.failure(Exception("Failed to delete save: HTTP ${response.code}"))
+            }
+            // A 204 alone is not proof: RLS/filter mismatches can delete zero rows.
+            val rows = JSONArray(body)
+            if (rows.length() != 1 || rows.getJSONObject(0).optString("id") != saveId) {
+                return@withContext Result.failure(Exception("Save was not removed from server"))
             }
             Result.success(Unit)
         } catch (e: Exception) {

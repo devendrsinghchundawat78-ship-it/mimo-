@@ -66,6 +66,8 @@ import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -180,6 +182,8 @@ fun HomeScreen(
 
     // State for Detail Screen (in-app photo/video streaming)
     var selectedDetailItem by remember { mutableStateOf<SaveItem?>(null) }
+    var pendingDelete by remember { mutableStateOf<SaveItem?>(null) }
+    var deleteInProgress by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val savedItems = com.mimo.app.data.repository.SaveRepository.saves
@@ -761,15 +765,35 @@ fun HomeScreen(
                     previewAnchor = null
                 },
                 onDelete = { item ->
-                    scope.launch {
-                        com.mimo.app.data.repository.SaveRepository.deleteItem(item)
-                    }
-                    if (selectedDetailItem?.id == item.id) {
-                        selectedDetailItem = null
-                    }
+                    pendingDelete = item
                     previewItem = null
                     previewAnchor = null
                 }
+            )
+        }
+
+        pendingDelete?.let { target ->
+            AlertDialog(
+                onDismissRequest = { if (!deleteInProgress) pendingDelete = null },
+                title = { Text("Delete this save permanently?", color = AppBlack) },
+                text = { Text("This removes it from your account and synced devices. It cannot be undone.", color = AppLightGrey) },
+                confirmButton = {
+                    TextButton(enabled = !deleteInProgress, onClick = {
+                        deleteInProgress = true
+                        scope.launch {
+                            val result = com.mimo.app.data.repository.SaveRepository.deleteItem(target)
+                            deleteInProgress = false
+                            if (result.isSuccess) {
+                                if (selectedDetailItem?.id == target.id) selectedDetailItem = null
+                                pendingDelete = null
+                            }
+                        }
+                    }) { Text(if (deleteInProgress) "Deleting..." else "Delete permanently", color = AppAccentRed) }
+                },
+                dismissButton = { TextButton(enabled = !deleteInProgress, onClick = { pendingDelete = null }) {
+                    Text("Cancel", color = AppBlack)
+                } },
+                containerColor = AppCardBg
             )
         }
 
@@ -807,12 +831,7 @@ fun HomeScreen(
                             }
                         }
                     },
-                    onDelete = { itemToDel ->
-                        scope.launch {
-                            com.mimo.app.data.repository.SaveRepository.deleteItem(itemToDel)
-                        }
-                        selectedDetailItem = null
-                    },
+                    onDelete = { itemToDel -> pendingDelete = itemToDel },
                     onUpdateItem = { itemToUpdate ->
                         scope.launch {
                             com.mimo.app.data.repository.SaveRepository.updateItem(itemToUpdate)

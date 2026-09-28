@@ -2,7 +2,6 @@ package com.mimo.app.data.network
 
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,12 +31,6 @@ object GoogleDriveService {
     private const val EDGE_FUNCTION_START_URL =
         "https://$SUPABASE_PROJECT_ID.supabase.co/functions/v1/google-drive-oauth-start"
 
-    private const val PREFS_NAME = "mimo_google_drive_prefs"
-    private const val KEY_IS_CONNECTED = "is_connected"
-    private const val KEY_CONNECTED_EMAIL = "connected_email"
-
-    private var prefs: SharedPreferences? = null
-
     // Reactive Compose state for UI
     var isConnected by mutableStateOf(false)
         private set
@@ -60,11 +53,8 @@ object GoogleDriveService {
         .build()
 
     fun initialize(context: Context) {
-        if (prefs == null) {
-            prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            isConnected = prefs?.getBoolean(KEY_IS_CONNECTED, false) ?: false
-            connectedEmail = prefs?.getString(KEY_CONNECTED_EMAIL, null)
-        }
+        isConnected = false
+        connectedEmail = null
         SupabaseSessionManager.initialize(context)
     }
 
@@ -149,13 +139,17 @@ object GoogleDriveService {
             val email = uri.getQueryParameter("email")
             val error = uri.getQueryParameter("error")
 
-            if (status == "success" || (error == null && status != "error")) {
-                setConnected(true, email)
-                lastActionSuccessMessage = "Connected"
+            if (status == "success" && error.isNullOrBlank() && !email.isNullOrBlank()) {
+                // The custom-scheme callback can be invoked by another app; it is not proof
+                // that a Google token exists server-side. Wait for a status check API.
+                isConnected = false
+                connectedEmail = null
+                lastActionSuccessMessage = "Google returned to Mimo; connection not verified"
                 errorMessage = null
             } else {
-                setConnected(false, null)
-                errorMessage = "Connection cancelled or failed"
+                isConnected = false
+                connectedEmail = null
+                errorMessage = "Drive connection could not be verified"
             }
             isLoading = false
             return true
@@ -164,25 +158,12 @@ object GoogleDriveService {
         return false
     }
 
-    fun disconnect() {
-        setConnected(false, null)
-        lastActionSuccessMessage = null
-        errorMessage = null
-    }
+    // Local state is not a server token. Do not offer a fake Disconnect button here;
+    // a real disconnect must revoke the server-side Google grant and confirm the result.
 
     fun clearMessages() {
         errorMessage = null
         lastActionSuccessMessage = null
-    }
-
-    private fun setConnected(connected: Boolean, email: String?) {
-        isConnected = connected
-        connectedEmail = email
-        prefs?.edit()?.apply {
-            putBoolean(KEY_IS_CONNECTED, connected)
-            putString(KEY_CONNECTED_EMAIL, email)
-            apply()
-        }
     }
 
     private fun openCustomTabOrBrowser(context: Context, url: String) {

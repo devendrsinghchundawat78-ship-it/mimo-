@@ -547,7 +547,6 @@ fun DetailScreen(
                             onClick = {
                                 showMenu = false
                                 onDelete(item)
-                                onBack()
                             }
                         )
                     }

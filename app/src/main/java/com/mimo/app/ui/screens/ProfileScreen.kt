@@ -1029,20 +1029,13 @@ fun SettingsBottomSheet(
                                     fontWeight = FontWeight.Medium,
                                     color = AppBlack
                                 )
-                                if (GoogleDriveService.isConnected && !GoogleDriveService.connectedEmail.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = GoogleDriveService.connectedEmail.orEmpty(),
-                                        fontSize = 12.sp,
-                                        color = AppLightGrey
-                                    )
-                                } else if (!GoogleDriveService.errorMessage.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = GoogleDriveService.errorMessage.orEmpty(),
-                                        fontSize = 11.sp,
-                                        color = AppAccentRed
-                                    )
+                                Text(
+                                    text = "Drive import is not available yet",
+                                    fontSize = 12.sp,
+                                    color = AppLightGrey
+                                )
+                                if (!GoogleDriveService.errorMessage.isNullOrBlank()) {
+                                    Text(GoogleDriveService.errorMessage.orEmpty(), color = AppAccentRed, fontSize = 11.sp)
                                 }
                             }
 
@@ -1052,65 +1045,9 @@ fun SettingsBottomSheet(
                                     strokeWidth = 2.dp,
                                     color = AppBlack
                                 )
-                            } else if (GoogleDriveService.isConnected) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(AppWhite)
-                                            .border(1.dp, AppBorderGrey, RoundedCornerShape(8.dp))
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = AppBlack,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "Connected",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = AppBlack
-                                        )
-                                    }
-
-                                    Text(
-                                        text = "Disconnect",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = AppAccentRed,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable { GoogleDriveService.disconnect() }
-                                            .padding(horizontal = 4.dp, vertical = 4.dp)
-                                    )
-                                }
                             } else {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(AppBlack)
-                                        .clickable {
-                                            scope.launch {
-                                                GoogleDriveService.startConnectFlow(context)
-                                            }
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "Connect",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = AppWhite
-                                    )
-                                }
+                                Text("Setup pending", color = AppLightGrey, fontSize = 12.sp)
+
                             }
                         }
 

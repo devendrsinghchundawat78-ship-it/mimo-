@@ -240,12 +240,15 @@ object SaveRepository {
         val result = SupabaseDataService.deleteSave(item.id, userId)
 
         return@withContext withContext(Dispatchers.Main) {
-            saves.removeAll { it.id == item.id }
-            LocalDataCache.removePendingSave(userId, item.id)
-            LocalDataCache.saveCachedSaves(userId, saves)
             if (result.isSuccess) {
+                saves.removeAll { it.id == item.id }
+                LocalDataCache.removePendingSave(userId, item.id)
+                LocalDataCache.saveCachedSaves(userId, saves)
                 Result.success(Unit)
             } else {
+                // Keep the save visible and cached; a failed server delete must not
+                // look successful and then resurrect silently after re-login.
+                errorMessage = result.exceptionOrNull()?.message ?: "Delete failed on server"
                 Result.failure(result.exceptionOrNull() ?: Exception("Delete failed"))
             }
         }
