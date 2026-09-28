@@ -198,6 +198,9 @@ fun HomeScreen(
     var selectedCategory by remember { mutableStateOf<ItemCategory?>(null) }
     var selectedHomeCollectionId by remember { mutableStateOf<String?>(null) }
 
+    val recentItems = savedItems.filter { !it.isArchived }
+        .sortedByDescending { it.createdAt }.take(5)
+
     val filteredItems = savedItems.filter { item ->
         val matchesQuery = searchQuery.isBlank() ||
             item.title.contains(searchQuery, ignoreCase = true) ||
@@ -406,7 +409,7 @@ fun HomeScreen(
                                     modifier = Modifier.padding(bottom = 12.dp)
                                 )
 
-                                if (savedItems.isEmpty()) {
+                                if (recentItems.isEmpty()) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -427,7 +430,7 @@ fun HomeScreen(
                                         contentPadding = PaddingValues(vertical = 4.dp),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        items(savedItems.take(5), key = { "recent_" + it.id }) { item ->
+                                        items(recentItems, key = { "recent_" + it.id }) { item ->
                                             RecentSaveCarouselCard(
                                                 item = item,
                                                 onLongPress = { offset ->
